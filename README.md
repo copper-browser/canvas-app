@@ -21,6 +21,27 @@ updates and relays the sync socket over the bridge described below.
 
 MIT licensed; see [LICENSE](LICENSE).
 
+## Use it in any browser
+
+`dist/web/index.html` is **Canvas App**: the same page with a host of its own (`src/web/`), so it
+runs in Chrome, Firefox, Safari or Edge with nothing installed. It is one self-contained file
+(≈ 840 KB); serve it from any static server, or open it locally:
+
+```sh
+bun run build && python3 -m http.server -d dist/web 8080   # → http://localhost:8080
+```
+
+- **Canvases live in the browser** (IndexedDB): each canvas's Yjs updates, appended as you work and
+  compacted into a snapshot past 500, as Copper does on disk. `#/` lists them; `#/c/<id>` opens one.
+- **Tabs of one browser stay in step**: an update made in one tab is drawn in the others
+  (BroadcastChannel), and stored once.
+- **Files**: *Download* writes a `.canvas` file (`{"format":"canvas-app","version":1,name,state}`,
+  `state` being the base64 Yjs state); *Open file* reads one back as a new canvas.
+- The title pill says "In this browser"; links open in a new tab; the page's Share button opens the
+  app's share sheet.
+
+`bun run dev:web` serves it with hot reload at `/web.html`.
+
 ## Develop
 
 ```sh
@@ -49,7 +70,7 @@ Checks (all must pass):
 bun run test        # vitest (4 workers, from vitest.config.ts)
 bun run typecheck   # tsc --noEmit
 bun run lint        # eslint (typescript-eslint, react-hooks)
-bun run build       # → dist/canvas.html
+bun run build       # → dist/canvas.html and dist/web/index.html
 ./build.sh          # bun install --frozen-lockfile && bun run build (no-op without bun)
 ```
 
@@ -87,6 +108,7 @@ copperCanvas.init({
   state: "AQL…" | null,                    // base64 Yjs update, applied before anything else
   online: false,                           // true → connect the relayed provider
   readOnly: false,
+  place: "on this Mac",                    // optional: where the local copy lives, for the title pill
 })                                          // a second init replaces the session
 
 copperCanvas.applyUpdate("AQL…")            // a stored or relayed update (not echoed back)
@@ -127,6 +149,7 @@ copperCanvas.setAgent({ id: "agent:scout", remove: true })
 copperCanvas.setStatus({ mode: "shared-offline", pending: 3 })  // what the title pill says; see below
 copperCanvas.setShare({ canShare: true, members: 2 }) // show/enables the native Share button
 copperCanvas.setShare({ canShare: false, reason: "Sign in to share" }) // disabled with a tooltip
+copperCanvas.setNav({ home: true })         // an "All canvases" button left of the title pill → {"type":"home"}; null hides it
 copperCanvas.presence()                       // [{id,name,color,kind,cursor:{x,y}|null}] for everyone else
 copperCanvas.theme("dark")                  // "light" | "dark" | "system" (default: system)
 copperCanvas.frameEvent({ name, kind: "nav", url, title, icon }) // a live frame's report (also "escape", "blank"); → true if a frame took it
@@ -246,9 +269,10 @@ from `init.me`, which is also published in awareness.
 | Message | When |
 |---|---|
 | `{"type":"ready","version"}` | the API is installed; call `init` |
-| `{"type":"update","b64"}` | after every local transaction (user, agent ops, presence, meta) — not for `init.state`, `applyUpdate` or server frames |
+| `{"type":"update","b64","docId"}` | after every local transaction (user, agent ops, presence, meta) — not for `init.state`, `applyUpdate` or server frames. `docId` is the session's `init.docId`, so an update a closing session posts while the next one opens is kept with its own canvas |
 | `{"type":"selection","ids"}` | the user's selection changed |
 | `{"type":"share"}` | the Share pill was clicked; Copper opens its native sheet |
+| `{"type":"home"}` | the "All canvases" button (`setNav`) was clicked |
 | `{"type":"presence","people":[{"id","name","color","kind"}]}` | everyone else in the room, diffed and debounced (≤500 ms) |
 | `{"type":"ws","b64"}` | a frame for the relayed socket |
 | `{"type":"wsOpen","url"}` / `{"type":"wsClose"}` | open / close the relayed socket |
@@ -302,6 +326,7 @@ src/
   placement.ts      free-slot placement near the viewport centre
   theme.ts          light / dark / system
   dev.ts, dev-relay.ts   ?dev=1 host double and in-page sync server
+  web/              Canvas App's browser host: IndexedDB log (store.ts), routing, tabs, files (host.ts), list and share sheet (Home.tsx)
   canvas/           doc model, geometry, arrows, search, markdown, images, presence, and the UI
   canvas/laser/     the laser pointer: trails, awareness wire format, canvas renderer
   canvas/debug.ts   render counters; ?dev=1 adds window.__canvasDebug (seed a big board, frame times)
