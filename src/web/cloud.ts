@@ -174,8 +174,22 @@ function explain(status: number, code: string | undefined, message: string | und
   switch (code) {
     case 'instance_key':
       return 'This server wants a link code (Copper Cloud): paste it as the server.'
+    // Copper Cloud says `credentials`; canvas-cloud says `invalid_credentials`.
     case 'credentials':
+    case 'invalid_credentials':
       return 'Wrong email or password.'
+    case 'account_disabled':
+      return 'This account is turned off; ask the server’s admin.'
+    case 'password_not_set':
+      return 'This account signs in another way (not with a password); ask the server’s admin to set one.'
+    case 'signup_closed':
+      return 'This server is not taking new accounts; ask its admin for one.'
+    case 'signup_domain_not_allowed':
+      return 'This server only takes new accounts from certain email domains.'
+    case 'email_taken':
+      return 'That email already has an account; sign in instead.'
+    case 'rate_limited':
+      return 'Too many tries; wait a minute and try again.'
     case 'access_key_required':
       return 'This server needs a personal link code to create an account; ask its admin for one.'
     case 'forbidden':
@@ -183,6 +197,6 @@ function explain(status: number, code: string | undefined, message: string | und
     case 'link_not_found':
       return 'That share link no longer works.'
     default:
-      return message || (status === 409 ? 'That email already has an account; sign in instead.' : `Copper Cloud answered ${status}.`)
+      return message || (status === 409 ? 'That email already has an account; sign in instead.' : `The server answered ${status}.`)
   }
 }
