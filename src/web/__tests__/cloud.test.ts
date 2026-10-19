@@ -59,6 +59,21 @@ describe('CloudClient', () => {
     expect((seen[0]!.init!.headers as Record<string, string>)['x-copper-instance']).toBe('ck_1')
   })
 
+  it('says canvas-cloud’s sign-in and sign-up refusals in words', async () => {
+    const cases: [number, string, RegExp][] = [
+      [401, 'invalid_credentials', /Wrong email or password/],
+      [401, 'account_disabled', /turned off/],
+      [403, 'signup_closed', /not taking new accounts/],
+      [403, 'signup_domain_not_allowed', /email domains/],
+      [409, 'email_taken', /already has an account/],
+      [403, 'password_not_set', /another way/],
+    ]
+    for (const [status, error, text] of cases) {
+      const c = new CloudClient('https://c.example', undefined, null, fake(status, { error, message: 'raw' }))
+      await expect(c.signIn('a@b.c', 'pw', { signup: true, device: { id: 'd', name: 'n' } })).rejects.toMatchObject({ status, code: error, message: expect.stringMatching(text) })
+    }
+  })
+
   it('turns server errors into sentences', async () => {
     const c = new CloudClient('https://c.example', 'k', null, fake(401, { error: 'credentials' }))
     await expect(c.signIn('a', 'b', { device: { id: 'd', name: 'n' } })).rejects.toMatchObject({ status: 401, code: 'credentials', message: 'Wrong email or password.' })
