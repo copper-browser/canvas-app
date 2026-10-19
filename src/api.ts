@@ -26,6 +26,8 @@ export interface CopperCanvasApi {
   setStatus(status: unknown): void
   /** Shows/enables the native Share action; `null` hides it. */
   setShare(share: unknown): void
+  /** `{home: true}` shows an "All canvases" button that posts `{type:'home'}`; `null` hides it. */
+  setNav(nav: unknown): void
   /** Live people other than this page, including current world cursors. */
   presence(): Array<{ id: string; name: string; color: string; kind: 'human' | 'agent'; cursor: { x: number; y: number } | null }>
   theme(mode: 'light' | 'dark' | string): void
@@ -128,6 +130,7 @@ export function createApi(c: Controller = controller): CopperCanvasApi {
     setAgent: guard('setAgent', (agent: unknown) => c.setAgent(agent), undefined),
     setStatus: guard('setStatus', (status: unknown) => void c.setHostStatus(status), undefined),
     setShare: guard('setShare', (share: unknown) => void c.setShare(share), undefined),
+    setNav: guard('setNav', (nav: unknown) => void c.setNav(nav), undefined),
     presence: guard('presence', () => c.presence(), []),
     theme: guard('theme', (mode: string) => void setTheme(mode), undefined),
     frameEvent: guard('frameEvent', (event: unknown) => c.frameEvent(event), false),

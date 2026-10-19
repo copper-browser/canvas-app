@@ -78,3 +78,14 @@ describe('statusView with the host', () => {
     expect(shown('shared', true, 'online', { mode: 'shared-live', pending: 3 })).toMatchObject({ label: 'Live', pending: 0 })
   })
 })
+
+describe('where the local copy lives', () => {
+  it('says the host’s place instead of this Mac, without pointing at Copper’s settings', () => {
+    const local = statusView({ kind: 'personal', online: false, sync: 'local', host: null, place: 'in this browser' })
+    expect(local.label).toBe('In this browser')
+    expect(local.hint).toBe('Saved in this browser only')
+    const off = statusView({ kind: 'shared', online: true, sync: 'offline', host: null, place: 'in this browser' })
+    expect(off.label).toBe('Offline · changes saved in this browser')
+    expect(off.hint).not.toContain('Settings')
+  })
+})
