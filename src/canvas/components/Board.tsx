@@ -180,9 +180,10 @@ export function Board({ session }: { session: Session }) {
   const sync = useSyncExternalStore(controller.subscribe, () => session.status)
   const hostStatus = useSyncExternalStore(controller.subscribe, controller.getHostStatus)
   const share = useSyncExternalStore(controller.subscribe, controller.getShare)
+  const nav = useSyncExternalStore(controller.subscribe, controller.getNav)
   const status = useMemo(
-    () => statusView({ kind: cfg.kind, online: cfg.online, sync, host: hostStatus, readOnly }),
-    [cfg.kind, cfg.online, sync, hostStatus, readOnly]
+    () => statusView({ kind: cfg.kind, online: cfg.online, sync, host: hostStatus, readOnly, place: cfg.place }),
+    [cfg.kind, cfg.online, sync, hostStatus, readOnly, cfg.place]
   )
   const peers = usePeers(awareness)
   const agents = useLiveAgents(store.agents)
@@ -2128,7 +2129,13 @@ export function Board({ session }: { session: Session }) {
           />
         )}
 
-        <TitleBar name={cfg.name} kind={cfg.kind} status={status} readOnly={readOnly} />
+        <TitleBar
+          name={cfg.name}
+          kind={cfg.kind}
+          status={status}
+          readOnly={readOnly}
+          onHome={nav?.home ? () => postToHost({ type: 'home' }) : undefined}
+        />
         <TopRight
           onSearch={() => (search.open ? search.close() : search.show())}
           searchOpen={search.open}

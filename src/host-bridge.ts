@@ -13,9 +13,10 @@ export interface HostPresencePerson {
 
 export type PageMessage =
   | { type: 'ready'; version: string }
-  | { type: 'update'; b64: string }
+  | { type: 'update'; b64: string; docId?: string }
   | { type: 'selection'; ids: string[] }
   | { type: 'share' }
+  | { type: 'home' }
   | { type: 'presence'; people: readonly HostPresencePerson[] }
   | { type: 'ws'; b64: string }
   | { type: 'wsOpen'; url: string }

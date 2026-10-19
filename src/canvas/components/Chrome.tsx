@@ -19,6 +19,7 @@ import {
   ImageIcon,
   ImageOff,
   Keyboard,
+  LayoutGrid,
   Link2,
   ListChecks,
   Lock,
@@ -425,17 +426,33 @@ export function TitleBar({
   kind,
   status,
   readOnly,
+  onHome,
 }: {
   name: string
   kind: string
   status: StatusView
   readOnly: boolean
+  /** The host's list of canvases (`copperCanvas.setNav`); no button without it. */
+  onHome?: () => void
 }) {
   const s = status
   const dot = TONE_DOT[s.tone]
   const warn = s.tone === 'warning' && !s.pulse
   return (
     <div className="pointer-events-none absolute left-3 right-[120px] top-3 flex min-w-0 items-center gap-2">
+      {onHome && (
+        <Panel className="pointer-events-auto flex shrink-0 p-1">
+          <button
+            type="button"
+            aria-label="All canvases"
+            title="All canvases"
+            onClick={onHome}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-2 outline-none hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </Panel>
+      )}
       <Panel className="pointer-events-auto flex min-w-0 items-center gap-2.5 py-1.5 pl-3 pr-3" data-testid="canvas-status" data-status={s.key}>
         <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
           {s.pulse && <span className={cn('pulse-ring absolute h-full w-full rounded-full', dot)} />}

@@ -65,10 +65,16 @@ export const sameHostStatus = (a: HostStatus | null, b: HostStatus | null) =>
 
 const pendingText = (n: number) => (n > 0 ? ` · ${n} pending` : '')
 
-function view(key: StatusKey, pending = 0, readOnly = false): StatusView {
+/** Where Copper keeps a board's local copy; other hosts say their own (`init.place`, e.g. "in this browser"). */
+export const DEFAULT_PLACE = 'on this Mac'
+
+function view(key: StatusKey, pending = 0, readOnly = false, place = DEFAULT_PLACE): StatusView {
+  const Place = place.charAt(0).toUpperCase() + place.slice(1)
+  // Only Copper has a Settings › Cloud pane to point at.
+  const settings = place === DEFAULT_PLACE ? ' (Settings › Cloud)' : ''
   switch (key) {
     case 'local':
-      return { key, label: 'On this Mac', short: 'On this Mac', hint: 'Saved on this Mac only', tone: 'muted', pulse: false, pending: 0 }
+      return { key, label: Place, short: Place, hint: `Saved ${place} only`, tone: 'muted', pulse: false, pending: 0 }
     case 'connecting':
       return { key, label: 'Connecting', short: 'Connecting', hint: 'Connecting to Copper Cloud…', tone: 'warning', pulse: true, pending: 0 }
     case 'live':
@@ -79,20 +85,20 @@ function view(key: StatusKey, pending = 0, readOnly = false): StatusView {
       if (readOnly)
         return {
           key,
-          label: 'Offline · copy on this Mac',
+          label: `Offline · copy ${place}`,
           short: 'Offline',
-          hint: 'Not connected to Copper Cloud: this is the copy saved on this Mac, and it updates when it reconnects (Settings › Cloud).',
+          hint: `Not connected to Copper Cloud: this is the copy saved ${place}, and it updates when it reconnects${settings}.`,
           tone: 'warning',
           pulse: false,
           pending: 0,
         }
       return {
         key,
-        label: `Offline · changes saved on this Mac${pendingText(pending)}`,
+        label: `Offline · changes saved ${place}${pendingText(pending)}`,
         short: `Offline${pendingText(pending)}`,
         hint:
           (pending > 0 ? `${pending} change${pending === 1 ? '' : 's'} waiting to sync. ` : '') +
-          'Not connected to Copper Cloud: your changes are saved on this Mac and sync when it reconnects (Settings › Cloud).',
+          `Not connected to Copper Cloud: your changes are saved ${place} and sync when it reconnects${settings}.`,
         tone: 'warning',
         pulse: false,
         pending,
@@ -111,6 +117,7 @@ export function statusView({
   sync,
   host,
   readOnly = false,
+  place = DEFAULT_PLACE,
 }: {
   kind: string
   online: boolean
@@ -118,10 +125,13 @@ export function statusView({
   host: HostStatus | null
   /** A view-only board has no changes of its own to keep. */
   readOnly?: boolean
+  /** Where the local copy lives ("on this Mac", "in this browser"). */
+  place?: string
 }): StatusView {
-  const offline = (pending = 0) => view('offline', pending, readOnly)
+  const offline = (pending = 0) => view('offline', pending, readOnly, place)
+  const local = () => view('local', 0, false, place)
   const own = (): StatusView => {
-    if (!online || sync === 'local') return kind === 'shared' ? offline() : view('local')
+    if (!online || sync === 'local') return kind === 'shared' ? offline() : local()
     if (sync === 'connecting') return view('connecting')
     if (sync === 'offline') return offline()
     return view('live')
@@ -129,7 +139,7 @@ export function statusView({
   if (!host) return own()
   switch (host.mode) {
     case 'local':
-      return view('local')
+      return local()
     case 'shared-offline':
       return offline(host.pending ?? 0)
     case 'shared-live':

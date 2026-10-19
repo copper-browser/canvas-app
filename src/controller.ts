@@ -25,7 +25,7 @@ import {
   type Picture,
 } from './canvas/legacy'
 import { occupied } from './placement'
-import { parseHostStatus, sameHostStatus, type HostStatus, type SyncStatus } from './canvas/status'
+import { DEFAULT_PLACE, parseHostStatus, sameHostStatus, type HostStatus, type SyncStatus } from './canvas/status'
 import { createPresenceReporter, hostPresence, readPresence } from './canvas/presence'
 import type { Me } from './canvas/types'
 import { FrameBus, parseFrameEvent } from './canvas/frames'
@@ -45,6 +45,8 @@ export interface InitConfig {
   state: string | null
   online: boolean
   readOnly: boolean
+  /** Where the host keeps the local copy, for the title pill ("on this Mac", "in this browser"). */
+  place: string
 }
 
 export type { HostStatus, SyncStatus }
@@ -89,6 +91,20 @@ export function parseShare(raw: unknown): ShareConfig | null {
   return out
 }
 
+/** `copperCanvas.setNav`: the host's own navigation, drawn beside the title pill. */
+export interface NavConfig {
+  /** Show a button that posts `{type:'home'}` (the host's list of canvases). */
+  home: boolean
+}
+
+export function parseNav(raw: unknown): NavConfig | null {
+  let v = raw
+  if (typeof v === 'string') v = JSON.parse(v)
+  if (v === null || v === undefined) return null
+  if (!isObject(v)) throw new Error('setNav: expected {home}')
+  return { home: v.home === true }
+}
+
 export const sameShare = (a: ShareConfig | null, b: ShareConfig | null) =>
   a === b || (!!a && !!b && a.canShare === b.canShare && (a.members ?? 0) === (b.members ?? 0) && (a.reason ?? '') === (b.reason ?? ''))
 
@@ -112,6 +128,7 @@ export function parseInit(raw: unknown): InitConfig {
     state: typeof v.state === 'string' && v.state ? v.state : null,
     online: v.online === true,
     readOnly: v.readOnly === true,
+    place: typeof v.place === 'string' && v.place.trim() ? v.place.trim().slice(0, 40) : DEFAULT_PLACE,
   }
 }
 
@@ -199,7 +216,7 @@ export class Session {
     // provider relays it (online). What the host or the server sent is theirs.
     this.onUpdate = (update, origin) => {
       if (origin === HOST || (this.provider && origin === this.provider)) return
-      postToHost({ type: 'update', b64: toBase64(update) })
+      postToHost({ type: 'update', b64: toBase64(update), docId: this.cfg.docId })
     }
     this.doc.on('update', this.onUpdate)
     this.status = cfg.online ? 'connecting' : 'local'
@@ -284,6 +301,8 @@ export class Controller {
   private hostStatus: HostStatus | null = null
   /** Share capability supplied by Copper; null keeps the Share button hidden. */
   private share: ShareConfig | null = null
+  /** Host navigation (a web host's "All canvases"); null shows none, as in Copper. */
+  private nav: NavConfig | null = null
   /** Live frames' reports from the host, to the view that owns each frame. */
   readonly frames = new FrameBus()
   /** Pictures of live frames' sites, asked of the host (`canvas/posters.ts`). */
@@ -338,6 +357,16 @@ export class Controller {
 
   getHostStatus = () => this.hostStatus
   getShare = () => this.share
+  getNav = () => this.nav
+
+  /** `copperCanvas.setNav`: idempotent; `null` hides the host's navigation. */
+  setNav(raw: unknown): NavConfig | null {
+    const next = parseNav(raw)
+    if ((next?.home ?? null) === (this.nav?.home ?? null)) return this.nav
+    this.nav = next
+    this.emit()
+    return next
+  }
 
   /** `copperCanvas.setShare`: idempotent and tolerant of extra fields. */
   setShare(raw: unknown): ShareConfig | null {
