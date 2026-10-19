@@ -7,9 +7,20 @@ frames (a link with `live: true`: the site itself in an iframe, `src/canvas/fram
 multi-select, marquee, move, resize, undo/redo, search, live cursors, a laser pointer everyone on the
 board sees, and agent presence. Boards from Easels come over through `importLegacy`.
 
-This repository is the canvas's home. Copper shows it at `copper://canvas/<id>`, embedding the
-build described under [Embedding](#embedding-host-side); Copper for Linux vendors the same file.
+This repository is the canvas's only home: page changes land here, nowhere else. Copper shows it
+at `copper://canvas/<id>` through the host bridge under [Embedding](#embedding-host-side).
 History up to the split is Copper's `Canvas/` directory (`git subtree split`), so blame still works.
+
+**Hosts pin a commit of `main`.**
+- Copper (macOS) vendors `dist/canvas.html` as `Canvas/dist/canvas.html` at `Canvas/CANVAS_APP_REF`
+  (`Canvas/sync.sh`).
+- Copper for Linux vendors it as `crates/copper-app/src/canvas/resources/canvas.html` at the
+  `CANVAS_APP_REF` beside it (`packaging/sync-canvas-bundle.sh --canvas-app`). Copper for Windows
+  shares Linux's crates.
+- Both repositories check every hour (`.github/workflows/canvas.yml`). When `main` has moved, they
+  push a `canvas/take-canvas-app` branch and open one "Canvas: canvas-app moved on" issue with a
+  link that opens the pin PR.
+- Keep the host contract below compatible: a host only ever reads the messages it knows.
 
 It is a Vite + React 19 + TypeScript + Tailwind v4 page, built with **bun** into one self-contained
 file, **`dist/canvas.html`** (≈ 800 KB; every script and style inlined, no fonts or other requests).
