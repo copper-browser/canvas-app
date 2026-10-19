@@ -1,8 +1,9 @@
 /** The browser host's own screens: the list of canvases and the share sheet. */
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Code2, Download, FileUp, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Cloud, Code2, Copy, Download, FileUp, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { WebHost } from './host'
 import type { CanvasRecord } from './store'
+import { CloudSection, ConnectForm } from './CloudPanel'
 
 const REPO = 'https://github.com/copper-browser/canvas-app'
 
@@ -11,6 +12,7 @@ export function WebShell({ host }: { host: WebHost }) {
   return (
     <>
       {state.route.view === 'home' && <Home host={host} />}
+      {state.route.view === 'join' && !state.cloud && <JoinScreen host={host} />}
       {state.sharing && state.current && <ShareSheet host={host} canvas={state.current} />}
       {state.error && <Toast text={state.error} onClose={() => host.fail(null)} />}
     </>
@@ -18,7 +20,10 @@ export function WebShell({ host }: { host: WebHost }) {
 }
 
 function Home({ host }: { host: WebHost }) {
-  const { canvases, me } = useSyncExternalStore(host.subscribe, host.getState)
+  const { canvases: all, me, cloud, cloudCanvases } = useSyncExternalStore(host.subscribe, host.getState)
+  // Canvases on Copper Cloud are listed with the server's; their local copies show here only
+  // while that list is out of reach (signed out, offline).
+  const canvases = cloud && cloudCanvases ? all.filter(c => !c.cloud) : all
   const fileInput = useRef<HTMLInputElement>(null)
   const open = (id: string) => host.navigate({ view: 'canvas', id })
   const create = async () => open((await host.create()).id)
@@ -53,7 +58,9 @@ function Home({ host }: { host: WebHost }) {
             }}
           />
         </header>
-        <p className="mt-1.5 text-[13px] text-ink-3">Saved in this browser. Download one as a file to keep or send it.</p>
+        <p className="mt-1.5 text-[13px] text-ink-3">
+          {cloud ? 'In this browser' : 'Saved in this browser. Download one as a file to keep or send it, or sign in to a canvas server below to share it live.'}
+        </p>
 
         {canvases.length === 0 ? (
           <div className="mt-16 flex flex-col items-center gap-3 text-center text-ink-3">
@@ -69,6 +76,8 @@ function Home({ host }: { host: WebHost }) {
             ))}
           </ul>
         )}
+
+        <CloudSection host={host} />
 
         <footer className="mt-auto pt-12 text-[12px] text-ink-4">
           Canvas is open source, from the{' '}
@@ -115,7 +124,10 @@ function CanvasCard({ canvas, host, onOpen }: { canvas: CanvasRecord; host: WebH
         </form>
       ) : (
         <button type="button" onClick={onOpen} className="block w-full rounded-[14px] p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
-          <span className="block truncate pr-7 text-[14px] font-semibold">{canvas.name}</span>
+          <span className="flex items-center gap-1.5 pr-7 text-[14px] font-semibold">
+            {canvas.cloud && <Cloud className="h-3.5 w-3.5 shrink-0 text-ink-3" aria-label="On a canvas server" />}
+            <span className="truncate">{canvas.name}</span>
+          </span>
           <span className="mt-1 block text-[12px] text-ink-3">Edited {ago(canvas.updatedAt)}</span>
         </button>
       )}
@@ -152,18 +164,85 @@ function CanvasCard({ canvas, host, onOpen }: { canvas: CanvasRecord; host: WebH
 }
 
 function ShareSheet({ host, canvas }: { host: WebHost; canvas: CanvasRecord }) {
+  const { cloud } = useSyncExternalStore(host.subscribe, host.getState)
+  const [link, setLink] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    try {
+      await fn()
+    } catch (error) {
+      host.fail(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const makeLink = () =>
+    run(async () => {
+      setLink(await host.shareLink(canvas.id))
+    })
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
   return (
     <Modal title="Share" onClose={() => host.closeShare()}>
-      <p className="text-[13px] leading-relaxed text-ink-2">
-        “{canvas.name}” lives in this browser. Download it as a file; anyone can open it here with <b>Open file</b>, or in Copper.
-      </p>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button onClick={() => host.closeShare()}>Done</Button>
-        <Button primary icon={<Download className="h-4 w-4" />} onClick={() => void download(host, canvas.id)}>
-          Download
-        </Button>
-      </div>
+      {canvas.cloud ? (
+        <>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            “{canvas.name}” is on {new URL(canvas.cloud.server).host}. A link lets anyone with an account there join as an editor, in Copper or in their browser.
+          </p>
+          {link ? (
+            <div className="mt-3 flex items-center gap-2">
+              <input readOnly value={link} onFocus={e => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink" />
+              <Button icon={<Copy className="h-4 w-4" />} onClick={() => void copy(link)}>
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          ) : null}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button onClick={() => host.closeShare()}>Done</Button>
+            {!link && (
+              <Button primary onClick={() => void makeLink()}>
+                {busy ? 'Creating…' : 'Create a link'}
+              </Button>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            “{canvas.name}” lives in this browser. Download it as a file (anyone can open it here with <b>Open file</b>, or in Copper){cloud ? ', or put it on your canvas server to work on it together, live.' : '.'}
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button icon={<Download className="h-4 w-4" />} onClick={() => void download(host, canvas.id)}>
+              Download
+            </Button>
+            {cloud && (
+              <Button primary icon={<Cloud className="h-4 w-4" />} onClick={() => void run(async () => void (await host.moveToCloud(canvas.id)))}>
+                {busy ? 'Moving…' : `Put on ${new URL(cloud.server).host}`}
+              </Button>
+            )}
+          </div>
+        </>
+      )}
     </Modal>
+  )
+}
+
+function JoinScreen({ host }: { host: WebHost }) {
+  return (
+    <div role="dialog" aria-label="Join a canvas" className="fixed inset-0 z-[100] overflow-y-auto bg-bg text-ink">
+      <div className="mx-auto max-w-[480px] px-6 pt-16">
+        <h1 className="text-[22px] font-semibold tracking-[-0.01em]">Someone shared a canvas with you</h1>
+        <ConnectForm host={host} note="Sign in to its canvas server to open it." />
+      </div>
+    </div>
   )
 }
 

@@ -40,6 +40,27 @@ bun run build && python3 -m http.server -d dist/web 8080   # → http://localhos
 - The title pill says "In this browser"; links open in a new tab; the page's Share button opens the
   app's share sheet.
 
+### With a canvas server
+
+Signed in to a canvas server, Canvas App works on the same shared canvases as Copper, live. The
+server is [canvas-cloud](https://github.com/copper-browser/canvas-cloud) (or a Copper Cloud, whose
+canvas API is the same). A server that serves the app itself (canvas-cloud's `web_root`) is found
+by probing same-origin `GET /v1/info` and used by default. A server on another origin must allow
+this page's origin (CORS).
+
+- **Sign in**: the server's address and an email and password (`POST /v1/auth/login|signup`). The
+  session is kept in `localStorage`; *Sign out* ends it. A Copper Cloud link code
+  (`copper-cloud://HOST:PORT/#k=…`) also works as the address: its key goes along as
+  `x-copper-instance`.
+- **Shared canvases** are listed from `GET /v1/canvases`. Opening one keeps a local copy in
+  IndexedDB (snapshotted from the live doc every minute) and connects the page's provider to the
+  room through a WebSocket the host opens itself (`src/web/room.ts`). The socket URL carries
+  `?token=…`, because a browser cannot set headers on a socket. A `4403`/`4404` close (access
+  revoked, canvas deleted) stops reconnecting.
+- **Share**: on a shared canvas, *Create a link* gives `https://SERVER/join/<token>`; the server
+  sends browsers to `#/join/<token>` here. On a canvas of this browser, *Put on SERVER* creates a
+  shared canvas from it, and the first sync uploads what it holds.
+
 `bun run dev:web` serves it with hot reload at `/web.html`.
 
 ## Develop
@@ -326,7 +347,8 @@ src/
   placement.ts      free-slot placement near the viewport centre
   theme.ts          light / dark / system
   dev.ts, dev-relay.ts   ?dev=1 host double and in-page sync server
-  web/              Canvas App's browser host: IndexedDB log (store.ts), routing, tabs, files (host.ts), list and share sheet (Home.tsx)
+  web/              Canvas App's browser host: IndexedDB log (store.ts), routing, tabs, files (host.ts), list and share sheet (Home.tsx),
+                    canvas server REST + sign-in (cloud.ts), the room socket (room.ts), connect + cloud list (CloudPanel.tsx)
   canvas/           doc model, geometry, arrows, search, markdown, images, presence, and the UI
   canvas/laser/     the laser pointer: trails, awareness wire format, canvas renderer
   canvas/debug.ts   render counters; ?dev=1 adds window.__canvasDebug (seed a big board, frame times)
