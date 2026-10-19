@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Rebuild the Canvas page into one self-contained file: Canvas/dist/canvas.html.
+# Rebuild the Canvas page into one self-contained file: dist/canvas.html.
 # The built file is committed, so the app builds without bun; run this after
-# changing anything under Canvas/src.
+# changing anything under src/.
 set -euo pipefail
 cd "$(dirname "$0")"
 if ! command -v bun >/dev/null 2>&1; then

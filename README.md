@@ -1,23 +1,30 @@
-# Canvas
+# Canvas App
 
-The infinite whiteboard Copper shows at `copper://canvas/<id>`: stickies (markdown), text, frames
-(optionally holding an image), arrows that attach to shapes or their sides, images, link cards and
-live web frames (a link with `live: true`: the site itself in an iframe, `src/canvas/frames.ts`);
-select, multi-select, marquee, move, resize, undo/redo, search, live cursors, a laser pointer
-everyone on the board sees, and agent presence. Boards from Easels come over through `importLegacy`.
+The infinite, collaborative whiteboard from the [Copper](https://github.com/copper-browser/Copper)
+browser, as an open-source web page: stickies (markdown), text, frames (optionally holding an image),
+arrows that attach to shapes or their sides, images, link cards, checklists, timelines and live web
+frames (a link with `live: true`: the site itself in an iframe, `src/canvas/frames.ts`); select,
+multi-select, marquee, move, resize, undo/redo, search, live cursors, a laser pointer everyone on the
+board sees, and agent presence. Boards from Easels come over through `importLegacy`.
+
+This repository is the canvas's home. Copper shows it at `copper://canvas/<id>`, embedding the
+build described under [Embedding](#embedding-host-side); Copper for Linux vendors the same file.
+History up to the split is Copper's `Canvas/` directory (`git subtree split`), so blame still works.
 
 It is a Vite + React 19 + TypeScript + Tailwind v4 page, built with **bun** into one self-contained
-file, **`dist/canvas.html`** (≈ 500 KB; every script and style inlined, no fonts or other requests).
-That file is committed and copied into the app bundle; the app does not need bun to build.
+file, **`dist/canvas.html`** (≈ 800 KB; every script and style inlined, no fonts or other requests).
+That file is committed, so hosts can vendor it without bun.
 
-The page never talks to the network (its CSP has `connect-src 'none'`; a live frame's iframe is
-the site's own document, allowed by `frame-src https: http:`). Copper hosts it in a `WKWebView`,
-persists its Yjs updates, and relays the sync socket over the bridge described below.
+The embedded page never talks to the network (its CSP has `connect-src 'none'`; a live frame's
+iframe is the site's own document, allowed by `frame-src https: http:`). The host persists its Yjs
+updates and relays the sync socket over the bridge described below.
+
+MIT licensed; see [LICENSE](LICENSE).
 
 ## Develop
 
 ```sh
-cd Canvas
+cd canvas-app
 bun install
 bun run dev            # then open http://localhost:5173/?dev=1
 ```
@@ -318,7 +325,7 @@ __canvasDebug.perf.start(); /* pan, drag, … */ __canvasDebug.perf.stop()
 
 On any build, `window.__canvasCounters` has the running render counts (board, shapes, the whole
 shape layer) and `performance.getEntriesByType('mark')` has `canvas:ready`, `canvas:init`,
-`canvas:board` and `canvas:painted`. The big-board bench is `docs/fixtures/canvas-big`.
+`canvas:board` and `canvas:painted`. The big-board bench is Copper's [`docs/fixtures/canvas-big`](https://github.com/copper-browser/Copper/tree/fork/docs/fixtures/canvas-big).
 
 **Big boards** (≈ 1,500 shapes, dozens of live frames and images) stay light because the board
 only draws what it needs, always deciding from the doc, never the DOM — so search, marquee,

@@ -1,8 +1,8 @@
 {
-  "name": "copper-canvas",
+  "name": "canvas-app",
   "private": true,
   "version": "1.0.0",
-  "description": "Copper Canvas: the infinite whiteboard page hosted by Copper in a WKWebView.",
+  "description": "Canvas: the infinite, collaborative whiteboard from the Copper browser, as a web app for any browser.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -39,5 +39,10 @@
     "vite": "^8.3.2",
     "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^5.0.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/copper-browser/canvas-app.git"
   }
 }
