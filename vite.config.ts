@@ -8,8 +8,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-/** The dev server serves `index.html`; the shipped file is `canvas.html`. */
-function renameHtml(to: string): Plugin {
+/** The dev server serves `index.html`/`web.html`; the shipped files are `canvas.html` and `web/index.html`. */
+function renameHtml(from: string, to: string): Plugin {
   let outDir = 'dist'
   return {
     name: 'copper-canvas-rename-html',
@@ -18,20 +18,22 @@ function renameHtml(to: string): Plugin {
       outDir = path.resolve(config.root, config.build.outDir)
     },
     closeBundle() {
-      const from = path.join(outDir, 'index.html')
-      if (fs.existsSync(from)) fs.renameSync(from, path.join(outDir, to))
+      const src = path.join(outDir, from)
+      if (fs.existsSync(src)) fs.renameSync(src, path.join(outDir, to))
     },
   }
 }
 
 /**
- * The page never talks to the network: the shipped build allows no
+ * The embedded page never talks to the network: its build allows no
  * connections at all (the host relays the sync socket over the bridge). Dev
  * keeps a socket open for hot reload. Images may come from https URLs, and
  * live web frames (`canvas/frames.ts`) show http(s) pages — those documents
  * are the sites' own, under their own policies; this one still connects nowhere.
+ * The web app (`--mode web`) is its own host, so it may reach a sync server.
  */
-function csp(): Plugin {
+function csp(web: boolean): Plugin {
+  const connect = (dev: boolean) => (web ? "'self' https: wss:" : dev ? "'self' ws: wss:" : "'none'")
   const policy = (dev: boolean) =>
     [
       "default-src 'none'",
@@ -39,7 +41,7 @@ function csp(): Plugin {
       "style-src 'self' 'unsafe-inline'",
       'img-src data: blob: https: http:',
       'frame-src https: http:',
-      `connect-src ${dev ? "'self' ws: wss:" : "'none'"}`,
+      `connect-src ${connect(dev)}${web && dev ? ' ws:' : ''}`,
       'font-src data:',
       "base-uri 'none'",
       "form-action 'none'",
@@ -57,25 +59,33 @@ function csp(): Plugin {
 }
 
 /**
- * One self-contained `dist/canvas.html`: every script, style and asset is
- * inlined, so the host can load it from the app bundle with no network.
+ * One self-contained file per build, every script, style and asset inlined:
+ * - `vite build`: `dist/canvas.html`, the page a host embeds (Copper loads it
+ *   from the app bundle with no network);
+ * - `vite build --mode web`: `dist/web/index.html`, Canvas App, the page with
+ *   its own browser host (`src/web/`) — one file to put on any static server.
  */
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    csp(),
-    viteSingleFile({ removeViteModuleLoader: true }),
-    renameHtml('canvas.html'),
-  ],
-  resolve: { alias: { '@': path.resolve(here, 'src') } },
-  build: {
-    target: 'safari16',
-    outDir: 'dist',
-    emptyOutDir: true,
-    assetsInlineLimit: 100_000_000,
-    cssCodeSplit: false,
-    reportCompressedSize: false,
-  },
-  server: { port: 5173, strictPort: false },
+export default defineConfig(({ mode }) => {
+  const web = mode === 'web'
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      csp(web),
+      viteSingleFile({ removeViteModuleLoader: true }),
+      web ? renameHtml('web.html', 'index.html') : renameHtml('index.html', 'canvas.html'),
+    ],
+    resolve: { alias: { '@': path.resolve(here, 'src') } },
+    build: {
+      target: 'safari16',
+      outDir: web ? 'dist/web' : 'dist',
+      // The embed build shares `dist/` with `dist/web/`; each overwrites only its own file.
+      emptyOutDir: web,
+      rollupOptions: { input: path.resolve(here, web ? 'web.html' : 'index.html') },
+      assetsInlineLimit: 100_000_000,
+      cssCodeSplit: false,
+      reportCompressedSize: false,
+    },
+    server: { port: 5173, strictPort: false },
+  }
 })
