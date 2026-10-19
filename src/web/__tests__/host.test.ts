@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { fromBase64, toBase64 } from '../../canvas/base64'
-import { EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, routeHash } from '../host'
+import { COMPACT_AFTER, COMPACT_AFTER_CHARS, EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, routeHash, shouldCompact } from '../host'
 import { ago } from '../Home'
 
 describe('routes', () => {
@@ -56,5 +56,14 @@ describe('ago', () => {
     expect(ago(now - 5 * 60_000, now)).toBe('5 min ago')
     expect(ago(now - 3 * 3_600_000, now)).toBe('3 h ago')
     expect(ago(now - 2 * 86_400_000, now)).toBe('2 d ago')
+  })
+})
+
+describe('shouldCompact', () => {
+  it('compacts past 500 entries or 2 MB of updates, as Copper does, never a lone snapshot', () => {
+    expect(shouldCompact({ count: COMPACT_AFTER, chars: 10 })).toBe(false)
+    expect(shouldCompact({ count: COMPACT_AFTER + 1, chars: 10 })).toBe(true)
+    expect(shouldCompact({ count: 2, chars: COMPACT_AFTER_CHARS + 1 })).toBe(true)
+    expect(shouldCompact({ count: 1, chars: COMPACT_AFTER_CHARS * 4 })).toBe(false)
   })
 })

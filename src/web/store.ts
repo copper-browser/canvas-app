@@ -25,6 +25,15 @@ export interface CanvasRecord {
   updatedAt: number
   /** Set once the canvas syncs with a Copper Cloud server. */
   cloud?: CloudLink
+  /** Characters of base64 appended since the last snapshot (decides compaction). */
+  logChars?: number
+}
+
+export interface AppendResult {
+  /** Rows in the canvas's log, the new one included. */
+  count: number
+  /** Characters of base64 in the log past its snapshot. */
+  chars: number
 }
 
 const DB_NAME = 'canvas-app'
@@ -95,8 +104,8 @@ export class CanvasDb {
     return rows.map(r => r.b64)
   }
 
-  /** Append one update; touches the record's `updatedAt`. Answers the log's length. */
-  async append(canvasId: string, b64: string, now = Date.now()): Promise<number> {
+  /** Append one update; touches the record's `updatedAt`. Answers how long the log has grown. */
+  async append(canvasId: string, b64: string, now = Date.now()): Promise<AppendResult> {
     const tx = this.db.transaction(['updates', 'canvases'], 'readwrite')
     const updates = tx.objectStore('updates')
     const last = await request(updates.openKeyCursor(range(canvasId), 'prev'))
@@ -106,17 +115,21 @@ export class CanvasDb {
     const count = await request(updates.count(range(canvasId)))
     const canvases = tx.objectStore('canvases')
     const record = (await request(canvases.get(canvasId))) as CanvasRecord | undefined
-    if (record) canvases.put({ ...record, updatedAt: now })
+    const chars = (record?.logChars ?? 0) + b64.length
+    if (record) canvases.put({ ...record, updatedAt: now, logChars: chars })
     await done(tx)
-    return count
+    return { count, chars }
   }
 
   /** Replace the log with one snapshot. */
   async compact(canvasId: string, snapshot: string): Promise<void> {
-    const tx = this.db.transaction('updates', 'readwrite')
+    const tx = this.db.transaction(['updates', 'canvases'], 'readwrite')
     const updates = tx.objectStore('updates')
     updates.delete(range(canvasId))
     updates.add({ canvasId, seq: 0, b64: snapshot })
+    const canvases = tx.objectStore('canvases')
+    const record = (await request(canvases.get(canvasId))) as CanvasRecord | undefined
+    if (record) canvases.put({ ...record, logChars: 0 })
     await done(tx)
   }
 

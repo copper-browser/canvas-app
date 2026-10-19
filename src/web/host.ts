@@ -14,8 +14,11 @@ import { hostDouble, type PageMessage } from '../host-bridge'
 import { CanvasDb, type CanvasRecord } from './store'
 import { loadMe, newId, saveMe, type Me } from './identity'
 
-/** Compact a canvas's log into one snapshot past this many entries (Copper: 500). */
+/** Compact a canvas's log into one snapshot past this many entries or this much base64 (Copper: 500 entries or 2 MB). */
 export const COMPACT_AFTER = 500
+export const COMPACT_AFTER_CHARS = Math.ceil((2 * 1024 * 1024 * 4) / 3)
+
+export const shouldCompact = ({ count, chars }: { count: number; chars: number }) => count > 1 && (count > COMPACT_AFTER || chars > COMPACT_AFTER_CHARS)
 export const PLACE = 'in this browser'
 export const EXPORT_FORMAT = 'canvas-app'
 
@@ -179,8 +182,8 @@ export class WebHost {
     if (broadcast) this.post({ type: 'update', tab: this.tab, canvasId, b64 })
     this.writes = this.writes
       .then(async () => {
-        const count = await this.db.append(canvasId, b64)
-        if (count > COMPACT_AFTER && this.openId === canvasId) await this.db.compact(canvasId, this.api.exportState())
+        const grown = await this.db.append(canvasId, b64)
+        if (shouldCompact(grown) && this.openId === canvasId) await this.db.compact(canvasId, this.api.exportState())
       })
       .catch(error => this.fail(`Could not save the canvas in this browser: ${message(error)}`))
   }
@@ -230,7 +233,8 @@ export class WebHost {
     }
     // Wait for queued writes, so the log read back holds everything.
     await this.writes
-    const state = mergeLog(await this.db.updates(id))
+    const log = await this.db.updates(id)
+    const state = mergeLog(log)
     await this.whenReady()
     this.openId = id
     this.api.init({ docId: id, name: record.name, kind: record.kind, me: this.state.me, state, online: false, readOnly: false, place: PLACE })
@@ -238,6 +242,17 @@ export class WebHost {
     this.api.setShare({ canShare: true })
     document.title = `${record.name} · Canvas`
     this.set({ current: record })
+    // A log of several entries (another tab's edits, or one too small to compact) is merged
+    // on every open; store the merge once the board is up, so the next open reads one row.
+    if (log.length > 1) setTimeout(() => this.compactOpen(id), 1500)
+  }
+
+  private compactOpen(id: string) {
+    this.writes = this.writes
+      .then(async () => {
+        if (this.openId === id) await this.db.compact(id, this.api.exportState())
+      })
+      .catch(error => this.fail(`Could not save the canvas in this browser: ${message(error)}`))
   }
 
   // ---- canvases -------------------------------------------------------------------
@@ -250,7 +265,7 @@ export class WebHost {
     const now = Date.now()
     const record: CanvasRecord = { id: newId(), name: name.trim() || 'Untitled canvas', kind: 'personal', createdAt: now, updatedAt: now }
     await this.db.put(record)
-    if (state) await this.db.append(record.id, state, now)
+    if (state) await this.db.compact(record.id, state)
     this.post({ type: 'list', tab: this.tab })
     await this.refresh()
     return record
