@@ -1,0 +1,5 @@
+fixture/
+app/
+state.json
+results/*.json
+results/*.log

@@ -1,0 +1,58 @@
+{
+ "before-fix/A": {
+  "sessions": 4,
+  "readyToInitMs": 92.5,
+  "paintedMs": 772.0,
+  "settledMs": 2580.0,
+  "benchP50Ms": 117.0,
+  "benchP95Ms": 1161.0,
+  "benchFps": 2.9,
+  "overviewP50Ms": 16.0,
+  "overviewP95Ms": 187.0,
+  "webRssMB": 1663.0,
+  "totalRssMB": 2033.8,
+  "loadavg": 6.2
+ },
+ "before-fix/B": {
+  "sessions": 4,
+  "readyToInitMs": 325.5,
+  "paintedMs": 1006.5,
+  "settledMs": 2720.5,
+  "benchP50Ms": 115.5,
+  "benchP95Ms": 1167.0,
+  "benchFps": 2.9,
+  "overviewP50Ms": 16.0,
+  "overviewP95Ms": 164.5,
+  "webRssMB": 1359.0,
+  "totalRssMB": 1758.7,
+  "loadavg": 4.8
+ },
+ "after-fix/A": {
+  "sessions": 2,
+  "readyToInitMs": 95.0,
+  "paintedMs": 770.0,
+  "settledMs": 2557.5,
+  "benchP50Ms": 115.0,
+  "benchP95Ms": 1151.5,
+  "benchFps": 2.9,
+  "overviewP50Ms": 16.0,
+  "overviewP95Ms": 137.5,
+  "webRssMB": 1701.4,
+  "totalRssMB": 2083.8,
+  "loadavg": 2.0
+ },
+ "after-fix/B": {
+  "sessions": 2,
+  "readyToInitMs": 39.0,
+  "paintedMs": 728.5,
+  "settledMs": 2492.5,
+  "benchP50Ms": 111.0,
+  "benchP95Ms": 1142.5,
+  "benchFps": 3.0,
+  "overviewP50Ms": 16.0,
+  "overviewP95Ms": 185.0,
+  "webRssMB": 1401.3,
+  "totalRssMB": 1778.5,
+  "loadavg": 2.4
+ }
+}
