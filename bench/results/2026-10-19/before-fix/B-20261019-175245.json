@@ -1,0 +1,365 @@
+{
+ "side": "B",
+ "url": "http://127.0.0.1:8798/#/c/ee70c5b4-6128-4c2f-9fc2-01f9570085b6",
+ "at": "2026-10-19T17:51:30",
+ "loadavg": [
+  18.43,
+  19.11,
+  19.62,
+  19.82,
+  19.92
+ ],
+ "rssIdle": {
+  "app": 339.2,
+  "web": 1220.1,
+  "network": 47.7,
+  "total": 1607.1
+ },
+ "cold": {
+  "count": 1500,
+  "domContentLoaded": 67,
+  "heapMB": null,
+  "marks": {
+   "canvas:board": 613,
+   "canvas:init": 403,
+   "canvas:painted": 1016,
+   "canvas:ready": 80
+  },
+  "pending": {
+   "frames": 0,
+   "images": 0
+  },
+  "settled": true,
+  "settledAt": 4710,
+  "total": 1500,
+  "transferKB": 0
+ },
+ "rssBench": {
+  "app": 339.7,
+  "web": 1306.2,
+  "network": 59.1,
+  "total": 1705.1
+ },
+ "bench": [
+  {
+   "after": {
+    "domNodes": 3115,
+    "iframes": 0,
+    "imagePixelsMP": 0.8,
+    "images": 18,
+    "imagesLoaded": 18,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 77,
+     "checklist": 7,
+     "frame": 40,
+     "image": 13,
+     "link": 53,
+     "sticky": 73,
+     "text": 47
+    },
+    "mountedShapes": 310,
+    "pageAgeMs": 32684,
+    "svgPaths": 735,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "before": {
+    "domNodes": 1918,
+    "iframes": 0,
+    "imagePixelsMP": 0.4,
+    "images": 9,
+    "imagesLoaded": 9,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 58,
+     "checklist": 3,
+     "frame": 21,
+     "image": 6,
+     "link": 30,
+     "sticky": 41,
+     "text": 28
+    },
+    "mountedShapes": 187,
+    "pageAgeMs": 24890,
+    "svgPaths": 497,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "run": {
+    "durationMs": 6591,
+    "fps": 1.4,
+    "frames": 9,
+    "max": 1804,
+    "over25": 7,
+    "over33": 7,
+    "over100": 6,
+    "p50": 162,
+    "p95": 1804,
+    "p99": 1804,
+    "peakDomElements": 1918,
+    "peakLiveIframes": 0,
+    "peakMountedElements": 187,
+    "zoomOut": 2.45
+   },
+   "state": "done"
+  },
+  {
+   "after": {
+    "domNodes": 3134,
+    "iframes": 0,
+    "imagePixelsMP": 0.8,
+    "images": 18,
+    "imagesLoaded": 18,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 77,
+     "checklist": 7,
+     "frame": 40,
+     "image": 13,
+     "link": 53,
+     "sticky": 76,
+     "text": 47
+    },
+    "mountedShapes": 313,
+    "pageAgeMs": 43730,
+    "svgPaths": 735,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "before": {
+    "domNodes": 3115,
+    "iframes": 0,
+    "imagePixelsMP": 0.8,
+    "images": 18,
+    "imagesLoaded": 18,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 77,
+     "checklist": 7,
+     "frame": 40,
+     "image": 13,
+     "link": 53,
+     "sticky": 73,
+     "text": 47
+    },
+    "mountedShapes": 310,
+    "pageAgeMs": 36077,
+    "svgPaths": 735,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "run": {
+    "durationMs": 6449,
+    "fps": 1.4,
+    "frames": 9,
+    "max": 1750,
+    "over25": 7,
+    "over33": 7,
+    "over100": 6,
+    "p50": 167,
+    "p95": 1750,
+    "p99": 1750,
+    "peakDomElements": 3115,
+    "peakLiveIframes": 0,
+    "peakMountedElements": 310,
+    "zoomOut": 2.45
+   },
+   "state": "done"
+  },
+  {
+   "after": {
+    "domNodes": 3134,
+    "iframes": 0,
+    "imagePixelsMP": 0.8,
+    "images": 18,
+    "imagesLoaded": 18,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 77,
+     "checklist": 7,
+     "frame": 40,
+     "image": 13,
+     "link": 53,
+     "sticky": 76,
+     "text": 47
+    },
+    "mountedShapes": 313,
+    "pageAgeMs": 54865,
+    "svgPaths": 735,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "before": {
+    "domNodes": 3134,
+    "iframes": 0,
+    "imagePixelsMP": 0.8,
+    "images": 18,
+    "imagesLoaded": 18,
+    "liveIframes": 0,
+    "mountedByKind": {
+     "arrow": 77,
+     "checklist": 7,
+     "frame": 40,
+     "image": 13,
+     "link": 53,
+     "sticky": 76,
+     "text": 47
+    },
+    "mountedShapes": 313,
+    "pageAgeMs": 47289,
+    "svgPaths": 735,
+    "view": {
+     "x": -724.106195,
+     "y": -810.477876,
+     "z": 0.257522
+    },
+    "viewport": {
+     "h": 774,
+     "w": 1024
+    }
+   },
+   "run": {
+    "durationMs": 6375,
+    "fps": 1.4,
+    "frames": 9,
+    "max": 1766,
+    "over25": 7,
+    "over33": 7,
+    "over100": 6,
+    "p50": 156,
+    "p95": 1766,
+    "p99": 1766,
+    "peakDomElements": 3134,
+    "peakLiveIframes": 0,
+    "peakMountedElements": 313,
+    "zoomOut": 2.45
+   },
+   "state": "done"
+  }
+ ],
+ "rssAfterRuns": {
+  "app": 340.4,
+  "web": 1040.2,
+  "network": 59.2,
+  "total": 1439.8
+ },
+ "overview": {
+  "after": {
+   "domNodes": 5036,
+   "iframes": 0,
+   "imagePixelsMP": 0.4,
+   "images": 19,
+   "imagesLoaded": 19,
+   "liveIframes": 0,
+   "mountedByKind": {
+    "arrow": 223,
+    "checklist": 7,
+    "frame": 40,
+    "image": 14,
+    "link": 54,
+    "sticky": 675,
+    "text": 92
+   },
+   "mountedShapes": 1105,
+   "pageAgeMs": 79333,
+   "svgPaths": 976,
+   "view": {
+    "x": -524.2,
+    "y": 188,
+    "z": 0.1
+   },
+   "viewport": {
+    "h": 774,
+    "w": 1024
+   }
+  },
+  "before": {
+   "domNodes": 5036,
+   "iframes": 0,
+   "imagePixelsMP": 0.4,
+   "images": 19,
+   "imagesLoaded": 19,
+   "liveIframes": 0,
+   "mountedByKind": {
+    "arrow": 223,
+    "checklist": 7,
+    "frame": 40,
+    "image": 14,
+    "link": 54,
+    "sticky": 675,
+    "text": 92
+   },
+   "mountedShapes": 1105,
+   "pageAgeMs": 73116,
+   "svgPaths": 976,
+   "view": {
+    "x": -524.2,
+    "y": 188,
+    "z": 0.1
+   },
+   "viewport": {
+    "h": 774,
+    "w": 1024
+   }
+  },
+  "run": {
+   "durationMs": 5015,
+   "fps": 13.2,
+   "frames": 66,
+   "max": 1312,
+   "over25": 7,
+   "over33": 6,
+   "over100": 6,
+   "p50": 16,
+   "p95": 153,
+   "p99": 1312,
+   "peakDomElements": 5036,
+   "peakLiveIframes": 0,
+   "peakMountedElements": 1192,
+   "zoomOut": 1
+  },
+  "state": "done"
+ },
+ "rssOverview": {
+  "app": 340.6,
+  "web": 1173.4,
+  "network": 59.2,
+  "total": 1573.2
+ }
+}
