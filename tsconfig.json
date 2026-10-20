@@ -16,8 +16,7 @@
     "allowJs": false,
     "noEmit": true,
     "types": ["vite/client", "node"],
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
 }
