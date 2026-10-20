@@ -100,8 +100,8 @@ Checks (all must pass):
 
 ```sh
 bun run test        # vitest (4 workers, from vitest.config.ts)
-bun run typecheck   # tsc --noEmit
-bun run lint        # eslint (typescript-eslint, react-hooks)
+bun run typecheck   # tsgo --noEmit (TypeScript 7 native)
+bun run lint        # oxlint (typescript, react-hooks; see .oxlintrc.json)
 bun run build       # → dist/canvas.html and dist/web/index.html
 ./build.sh          # bun install --frozen-lockfile && bun run build (no-op without bun)
 ```

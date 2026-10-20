@@ -5,7 +5,8 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(s)
 }
 
-export function fromBase64(text: string): Uint8Array {
+/** Typed `Uint8Array<ArrayBuffer>` (never a shared buffer) so the result can go straight to `WebSocket.send` and other `BufferSource` APIs. */
+export function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   let clean = text.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/')
   while (clean.length % 4) clean += '='
   const bin = atob(clean)
