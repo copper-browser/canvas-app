@@ -156,9 +156,15 @@ const hostOf = (server: string | null) => {
   }
 }
 
-/** The account to sign in with, in words: "your Exowatt Google account". */
-function accountPhrase(brand: Brand | null, providers: OidcProvider[]) {
+/**
+ * The account to sign in with, in words: "your Exowatt Google account". A provider
+ * already named after the brand ("Exowatt SSO") is not prefixed again.
+ */
+export function accountPhrase(brand: Brand | null, providers: OidcProvider[]) {
   const provider = providers.length === 1 ? providers[0]!.name : null
+  if (brand && provider && provider.toLowerCase().startsWith(`${brand.name.toLowerCase()} `)) {
+    return `your ${provider} account`
+  }
   if (brand && provider) return `your ${brand.name} ${provider} account`
   if (provider) return `your ${provider} account`
   return brand ? `your ${brand.name} account` : 'your account'
