@@ -1,12 +1,27 @@
 /** The canvas server in the list screen: connect, the canvases on it, sign out. */
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
-import { Cloud, LogOut, Users } from 'lucide-react'
+import { Cloud, Users } from 'lucide-react'
 import type { WebHost } from './host'
 import { ago } from './Home'
+import { SignInOptions } from './SignIn'
 
 export function CloudSection({ host }: { host: WebHost }) {
-  const { cloud, cloudCanvases, cloudBusy } = useSyncExternalStore(host.subscribe, host.getState)
+  const { cloud, cloudCanvases, cloudBusy, providers } = useSyncExternalStore(host.subscribe, host.getState)
   const [connecting, setConnecting] = useState(false)
+  if (!cloud && providers.length > 0) {
+    return (
+      <section className="mt-10 rounded-[14px] border border-dashed border-line p-5">
+        <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+          <Cloud className="h-4 w-4" aria-hidden="true" />
+          Shared canvases
+        </h2>
+        <p className="mt-1 text-[13px] text-ink-3">Sign in to open the canvases shared with you and work on them together, live.</p>
+        <div className="max-w-[360px]">
+          <SignInOptions host={host} />
+        </div>
+      </section>
+    )
+  }
   if (!cloud) {
     return (
       <section className="mt-10 rounded-[14px] border border-dashed border-line p-5">
@@ -30,20 +45,12 @@ export function CloudSection({ host }: { host: WebHost }) {
     )
   }
   return (
-    <section className="mt-10">
-      <div className="flex items-center gap-2">
-        <h2 className="mr-auto flex items-center gap-2 text-[14px] font-semibold">
-          <Cloud className="h-4 w-4" aria-hidden="true" />
-          Shared canvases
-          <span className="font-normal text-ink-3">
-            {cloud.user.display_name || cloud.user.email} · {new URL(cloud.server).host}
-          </span>
-        </h2>
-        <button type="button" onClick={() => void host.disconnect()} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink">
-          <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-          Sign out
-        </button>
-      </div>
+    <section className="mt-8">
+      <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+        <Cloud className="h-4 w-4" aria-hidden="true" />
+        Shared canvases
+        <span className="truncate font-normal text-ink-3">on {new URL(cloud.server).host}</span>
+      </h2>
       {cloudCanvases === null ? (
         <p className="mt-4 text-[13px] text-ink-3">{cloudBusy ? 'Loading…' : 'Could not load the canvases.'}</p>
       ) : (

@@ -20,7 +20,8 @@ export interface CopperCanvasApi {
   apply(opsJson: unknown): string
   read(optsJson?: unknown): string
   select(ids: unknown): void
-  zoomTo(ids: unknown): void
+  /** Bring shapes into view; `{fit: true}` fits and centres them instead of the gentlest reveal. */
+  zoomTo(ids: unknown, opts?: unknown): void
   setAgent(agent: unknown): void
   /** `{mode: 'local'|'personal-synced'|'shared-live'|'shared-offline', pending?}`; `null` clears. */
   setStatus(status: unknown): void
@@ -78,6 +79,19 @@ function idList(raw: unknown): string[] {
   return v.filter((x): x is string => typeof x === 'string' && x.length > 0)
 }
 
+/** `{fit: true}` (or that as JSON) asks a zoom to fit and centre. */
+function zoomFit(raw: unknown): boolean {
+  let v = raw
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v)
+    } catch {
+      return false
+    }
+  }
+  return !!v && typeof v === 'object' && (v as { fit?: unknown }).fit === true
+}
+
 const guard =
   <A extends unknown[], R>(name: string, fn: (...args: A) => R, fallback: R) =>
   (...args: A): R => {
@@ -126,7 +140,7 @@ export function createApi(c: Controller = controller): CopperCanvasApi {
       }
     },
     select: guard('select', (ids: unknown) => c.setSelection(idList(ids), true), undefined),
-    zoomTo: guard('zoomTo', (ids: unknown) => void c.zoomTo(idList(ids)), undefined),
+    zoomTo: guard('zoomTo', (ids: unknown, opts?: unknown) => void c.zoomTo(idList(ids), zoomFit(opts)), undefined),
     setAgent: guard('setAgent', (agent: unknown) => c.setAgent(agent), undefined),
     setStatus: guard('setStatus', (status: unknown) => void c.setHostStatus(status), undefined),
     setShare: guard('setShare', (share: unknown) => void c.setShare(share), undefined),

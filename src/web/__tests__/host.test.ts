@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { fromBase64, toBase64 } from '../../canvas/base64'
-import { COMPACT_AFTER, COMPACT_AFTER_CHARS, EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, routeHash, shouldCompact } from '../host'
+import { COMPACT_AFTER, COMPACT_AFTER_CHARS, EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, routeHash, sameRoute, shouldCompact } from '../host'
 import { ago } from '../Home'
 
 describe('routes', () => {
@@ -12,6 +12,25 @@ describe('routes', () => {
     expect(parseRoute('#/c/../x')).toEqual({ view: 'home' })
     expect(routeHash({ view: 'canvas', id: 'abc' })).toBe('#/c/abc')
     expect(routeHash({ view: 'home' })).toBe('#/')
+  })
+
+  it('reads a deep link’s focus, and writes it back', () => {
+    expect(parseRoute('#/c/abc?focus=e1-frame')).toEqual({ view: 'canvas', id: 'abc', focus: 'e1-frame' })
+    expect(parseRoute('#/c/abc?focus=a%20b&x=1')).toEqual({ view: 'canvas', id: 'abc', focus: 'a b' })
+    expect(parseRoute('#/c/abc?other=1')).toEqual({ view: 'canvas', id: 'abc' })
+    expect(parseRoute('#/c/abc?focus=')).toEqual({ view: 'canvas', id: 'abc' })
+    expect(parseRoute(`#/c/abc?focus=${'x'.repeat(201)}`)).toEqual({ view: 'canvas', id: 'abc' })
+    expect(routeHash({ view: 'canvas', id: 'abc', focus: 'a b' })).toBe('#/c/abc?focus=a%20b')
+    expect(parseRoute(routeHash({ view: 'canvas', id: 'abc', focus: 'x/y?z' }))).toEqual({ view: 'canvas', id: 'abc', focus: 'x/y?z' })
+    expect(sameRoute({ view: 'canvas', id: 'abc', focus: 'f' }, parseRoute('#/c/abc?focus=f'))).toBe(true)
+    expect(sameRoute({ view: 'canvas', id: 'abc', focus: 'f' }, { view: 'canvas', id: 'abc' })).toBe(false)
+  })
+
+  it('reads a share link', () => {
+    const token = 'AbC_123-x'.repeat(4)
+    expect(parseRoute(`#/join/${token}`)).toEqual({ view: 'join', token })
+    expect(parseRoute('#/join/short')).toEqual({ view: 'home' })
+    expect(routeHash({ view: 'join', token })).toBe(`#/join/${token}`)
   })
 })
 

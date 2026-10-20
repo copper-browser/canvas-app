@@ -29,6 +29,12 @@ export class RoomRelay {
   private socket: SocketLike | null = null
   /** Set by a 4403/4404 close: the room is gone for us, so later asks fail at once. */
   ended: number | null = null
+  /**
+   * Called once per connection, right after the page got the server's sync step 2 (y-protocols
+   * `[messageSync=0, syncStep2=1, …]`): from then on the board holds what the server has.
+   */
+  onSynced: (() => void) | null = null
+  private synced = false
 
   constructor(
     private readonly url: () => string,
@@ -51,11 +57,17 @@ export class RoomRelay {
       this.page().wsState('closed')
       return
     }
+    this.synced = false
     socket.binaryType = 'arraybuffer'
     socket.onopen = () => this.socket === socket && this.page().wsState('open')
     socket.onmessage = e => {
       if (this.socket !== socket || !(e.data instanceof ArrayBuffer)) return
-      this.page().wsMessage(toBase64(new Uint8Array(e.data)))
+      const bytes = new Uint8Array(e.data)
+      this.page().wsMessage(toBase64(bytes))
+      if (!this.synced && bytes[0] === 0 && bytes[1] === 1) {
+        this.synced = true
+        this.onSynced?.()
+      }
     }
     socket.onclose = e => {
       if (this.socket !== socket) return

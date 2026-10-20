@@ -7,6 +7,7 @@
  * headers on a WebSocket). A Copper Cloud link code (`copper-cloud://HOST:PORT/#k=<key>…`)
  * works too: its key goes as `x-copper-instance`, and as `?instance=` on the socket.
  */
+import { parseProviders, type OidcProvider } from './auth'
 
 export interface CloudUser {
   id: string
@@ -37,6 +38,17 @@ export interface LinkPreview {
   owner: { id: string; display_name: string }
   role: string
   member: boolean
+}
+
+/** A pending invite to someone else's canvas, addressed to your email (`GET /v1/invites`). */
+export interface CloudInvite {
+  id: string
+  canvas_id: string
+  canvas_name: string
+  email: string
+  status: string
+  invited_by: { id: string; email: string; display_name: string } | null
+  created_at: string
 }
 
 export class CloudError extends Error {
@@ -74,20 +86,36 @@ export function parseServer(input: string): { server: string; key?: string } {
   return key ? { server: url.origin, key } : { server: url.origin }
 }
 
+/** The server that serves this page, and the sign-in providers it offers. */
+export interface HomeServer {
+  server: string
+  providers: OidcProvider[]
+}
+
 /**
- * The page's own origin when a canvas server serves it (canvas-cloud's `web_root`): it answers
- * `GET /v1/info` with JSON. Null on a plain static server, or offline.
+ * The canvas server that serves this page (canvas-cloud's `web_root`): it answers
+ * `GET /v1/info` with JSON, listing its sign-in providers. Null on a plain static server, or
+ * offline (given up after `timeoutMs`).
  */
-export async function servedByServer(origin: string = location.origin, fetcher: typeof fetch = (...a) => fetch(...a)): Promise<string | null> {
+export async function homeServerInfo(origin: string = location.origin, fetcher: typeof fetch = (...a) => fetch(...a), timeoutMs = 5000): Promise<HomeServer | null> {
   if (!/^https?:/.test(origin)) return null
+  const abort = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : undefined
   try {
-    const res = await fetcher(`${origin}/v1/info`, { headers: { accept: 'application/json' } })
+    const res = await fetcher(`${origin}/v1/info`, { headers: { accept: 'application/json' }, signal: abort?.signal })
     if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null
     const info = (await res.json()) as { name?: unknown }
-    return typeof info?.name === 'string' ? origin : null
+    return typeof info?.name === 'string' ? { server: origin, providers: parseProviders(info) } : null
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+/** The page's own origin when a canvas server serves it; null on a plain static server, or offline. */
+export async function servedByServer(origin: string = location.origin, fetcher: typeof fetch = (...a) => fetch(...a)): Promise<string | null> {
+  return (await homeServerInfo(origin, fetcher))?.server ?? null
 }
 
 export const roomUrl = (s: Pick<CloudSession, 'server' | 'key' | 'token'>, canvasId: string) =>
@@ -149,6 +177,33 @@ export class CloudClient {
     return this.request<{ ok: boolean }>('POST', '/auth/logout', {})
   }
 
+  /** Who the session is (`GET /v1/auth/me`). */
+  async me(): Promise<CloudUser> {
+    const out = await this.request<{ user: CloudUser }>('GET', '/auth/me')
+    if (!out?.user || typeof out.user.id !== 'string') throw new CloudError(500, 'bad_response', 'The server did not say who you are.')
+    return out.user
+  }
+
+  /** One canvas you are a member of; a `404` when you are not (or it is gone). */
+  canvas(id: string) {
+    return this.request<CloudCanvas>('GET', `/canvases/${encodeURIComponent(id)}`)
+  }
+
+  /** Pending invites addressed to you. */
+  async invites(): Promise<CloudInvite[]> {
+    const out = await this.request<CloudInvite[] | { invites?: CloudInvite[] }>('GET', '/invites')
+    const list = Array.isArray(out) ? out : Array.isArray(out?.invites) ? out.invites : []
+    return list.filter(i => i && typeof i.id === 'string' && (i.status ?? 'pending') === 'pending')
+  }
+
+  acceptInvite(id: string) {
+    return this.request<CloudCanvas>('POST', `/invites/${encodeURIComponent(id)}/accept`, {})
+  }
+
+  declineInvite(id: string) {
+    return this.request<{ ok: boolean }>('POST', `/invites/${encodeURIComponent(id)}/decline`, {})
+  }
+
   canvases() {
     return this.request<CloudCanvas[]>('GET', '/canvases')
   }
@@ -195,7 +250,7 @@ function explain(status: number, code: string | undefined, message: string | und
     case 'forbidden':
       return status === 403 ? 'This server is not taking new accounts.' : message || 'Not allowed.'
     case 'link_not_found':
-      return 'That share link no longer works.'
+      return 'That share link no longer works. Ask whoever sent it for a new one.'
     default:
       return message || (status === 409 ? 'That email already has an account; sign in instead.' : `The server answered ${status}.`)
   }

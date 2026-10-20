@@ -284,7 +284,8 @@ type Listener = () => void
 
 /** What the board does for the controller (flights need its animation). */
 export interface BoardHandle {
-  zoomTo(ids: string[]): boolean
+  /** `fit`: fit and centre the shapes (a deep link's focus) rather than the gentlest reveal. */
+  zoomTo(ids: string[], fit?: boolean): boolean
 }
 
 export class Controller {
@@ -295,7 +296,7 @@ export class Controller {
   private lastPostedSelection = '[]'
   viewInfo: ViewInfo = { view: { x: 640, y: 400, z: 1 }, width: 1280, height: 800 }
   board: BoardHandle | null = null
-  private pendingZoom: string[] | null = null
+  private pendingZoom: { ids: string[]; fit: boolean } | null = null
   private version = 0
   /** What the host last said about the board's connection; outlives `init`. */
   private hostStatus: HostStatus | null = null
@@ -440,19 +441,19 @@ export class Controller {
   attachBoard(board: BoardHandle | null) {
     this.board = board
     if (board && this.pendingZoom) {
-      const ids = this.pendingZoom
+      const { ids, fit } = this.pendingZoom
       this.pendingZoom = null
-      board.zoomTo(ids)
+      board.zoomTo(ids, fit)
     }
   }
 
-  zoomTo(ids: string[]): boolean {
+  zoomTo(ids: string[], fit = false): boolean {
     const list = ids.map(bareId)
     if (!this.board) {
-      this.pendingZoom = list
+      this.pendingZoom = { ids: list, fit }
       return false
     }
-    return this.board.zoomTo(list)
+    return this.board.zoomTo(list, fit)
   }
 
   // ---- selection ---------------------------------------------------------------

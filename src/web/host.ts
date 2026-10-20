@@ -6,19 +6,26 @@
  * canvas's Yjs log in IndexedDB (`store.ts`), opens canvases with
  * `copperCanvas.init`, relays updates between tabs of the same browser over a
  * BroadcastChannel, and routes on the URL hash: `#/` is the list of canvases,
- * `#/c/<id>` one canvas, `#/join/<token>` a Copper Cloud share link.
+ * `#/c/<id>` one canvas (`?focus=<shape>` fits that shape once it is there), `#/join/<token>`
+ * a share link.
  *
  * Signed in to a canvas server (canvas-cloud, or a Copper Cloud; `cloud.ts`), a
  * canvas that lives there keeps its local copy here and opens online: the page's
- * provider talks to the room through a real WebSocket (`room.ts`).
+ * provider talks to the room through a real WebSocket (`room.ts`). Served by a canvas server
+ * with single sign-on, a "Continue with Google" leaves for the provider and comes back with the
+ * session in the fragment (`auth.ts`); links followed signed out wait for it (`arrive.ts`).
  */
 import * as Y from 'yjs'
 import { fromBase64, toBase64 } from '../canvas/base64'
 import { hostDouble, type PageMessage } from '../host-bridge'
 import { CanvasDb, type CanvasRecord } from './store'
 import { loadMe, newId, saveMe, type Me } from './identity'
-import { CloudClient, parseServer, roomUrl, servedByServer, shareUrl, type CloudCanvas, type CloudSession } from './cloud'
+import { CloudClient, homeServerInfo, parseServer, roomUrl, shareUrl, type CloudCanvas, type CloudInvite, type CloudSession } from './cloud'
 import { CLOSE_DELETED, RoomRelay } from './room'
+import { oidcStartUrl, parseAuthFragment, redirectTarget, signInErrorMessage, stashSignIn, takeSignIn, type AuthResult, type OidcProvider } from './auth'
+import { arriveAtCanvas, arriveAtJoin, type Arrival, type ArrivalDeps, type ArrivalError } from './arrive'
+import { focusWhenPresent } from './focus'
+import { deploymentBrand, type Brand } from './brand'
 
 /** Compact a canvas's log into one snapshot past this many entries or this much base64 (Copper: 500 entries or 2 MB). */
 export const COMPACT_AFTER = 500
@@ -28,7 +35,13 @@ export const shouldCompact = ({ count, chars }: { count: number; chars: number }
 export const PLACE = 'in this browser'
 export const EXPORT_FORMAT = 'canvas-app'
 
-export type Route = { view: 'home' } | { view: 'canvas'; id: string } | { view: 'join'; token: string }
+export type Route = { view: 'home' } | { view: 'canvas'; id: string; focus?: string } | { view: 'join'; token: string }
+
+/**
+ * What covers the board while a linked canvas can't open yet: a sign-in card, a moment of
+ * "opening…", or why it won't open.
+ */
+export type Landing = { kind: 'signin'; reason: 'join' | 'canvas' } | { kind: 'busy'; text: string } | { kind: 'error'; code: ArrivalError; message: string }
 
 /** How often an open cloud canvas folds what the room sent into its local copy. */
 export const CLOUD_SNAPSHOT_MS = 60_000
@@ -46,6 +59,17 @@ export interface HostState {
   cloud: CloudSession | null
   /** The server that serves this page (canvas-cloud's `web_root`), to sign in to by default. */
   homeServer: string | null
+  /** Its single sign-on providers (`GET /v1/info` → `auth.oidc`). */
+  providers: OidcProvider[]
+  /** `/v1/info` has answered (or failed): until then, don't guess which sign-in to show. */
+  infoLoaded: boolean
+  /** Why the last sign-in failed, shown where the person signs in. */
+  authError: string | null
+  landing: Landing | null
+  /** Invites to other people's canvases, waiting for you (null: not listed). */
+  invites: CloudInvite[] | null
+  /** The deployment's mark for the host's screens (`brand.ts`). */
+  brand: Brand | null
   /** Its canvases, once listed (null: not yet, or the list failed). */
   cloudCanvases: CloudCanvas[] | null
   cloudBusy: boolean
@@ -70,13 +94,20 @@ interface TabMessage {
 }
 
 export function parseRoute(hash: string): Route {
-  const m = /^#\/c\/([A-Za-z0-9_-]{1,80})$/.exec(hash)
-  if (m) return { view: 'canvas', id: m[1]! }
+  const m = /^#\/c\/([A-Za-z0-9_-]{1,80})(?:\?([^#]*))?$/.exec(hash)
+  if (m) {
+    const focus = m[2] ? new URLSearchParams(m[2]).get('focus')?.trim() : null
+    return focus && focus.length <= 200 ? { view: 'canvas', id: m[1]!, focus } : { view: 'canvas', id: m[1]! }
+  }
   const j = /^#\/join\/([A-Za-z0-9_-]{20,80})$/.exec(hash)
   return j ? { view: 'join', token: j[1]! } : { view: 'home' }
 }
 
-export const routeHash = (route: Route) => (route.view === 'canvas' ? `#/c/${route.id}` : route.view === 'join' ? `#/join/${route.token}` : '#/')
+export const routeHash = (route: Route) =>
+  route.view === 'canvas' ? `#/c/${route.id}${route.focus ? `?focus=${encodeURIComponent(route.focus)}` : ''}` : route.view === 'join' ? `#/join/${route.token}` : '#/'
+
+/** Two routes to the same place (a focus is part of it). */
+export const sameRoute = (a: Route, b: Route) => routeHash(a) === routeHash(b)
 
 const CLOUD_KEY = 'canvas-app:cloud'
 const DEVICE_KEY = 'canvas-app:device'
@@ -84,7 +115,8 @@ const DEVICE_KEY = 'canvas-app:device'
 function loadSession(): CloudSession | null {
   try {
     const v = JSON.parse(localStorage.getItem(CLOUD_KEY) ?? 'null') as CloudSession | null
-    return v && typeof v.server === 'string' && typeof v.token === 'string' && typeof v.key === 'string' && v.user ? v : null
+    // `key` is only there for a Copper Cloud (its gate key); a canvas-cloud session has none.
+    return v && typeof v.server === 'string' && typeof v.token === 'string' && (v.key === undefined || typeof v.key === 'string') && v.user ? v : null
   } catch {
     return null
   }
@@ -135,9 +167,21 @@ export class WebHost {
   /** The open cloud canvas's room socket. */
   private room: RoomRelay | null = null
   private snapshotTimer: ReturnType<typeof setInterval> | undefined
+  /** A sign-in's answer, read from the fragment at load (and wiped from the address bar). */
+  private returned: { result: AuthResult; provider?: string } | null = null
+  private stopFocus: (() => void) | null = null
+  private focusFallback: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly db: CanvasDb) {
     const cloud = loadSession()
+    const result = parseAuthFragment(location.hash)
+    if (result) {
+      // Back from the provider: the session (or why not) is in the fragment. Put the route the
+      // person left from back in its place, so the token never stays in the address bar or history.
+      const ret = takeSignIn()
+      this.returned = { result, provider: ret.provider }
+      history.replaceState(history.state, '', `${location.pathname}${location.search}${ret.hash}`)
+    }
     this.state = {
       route: parseRoute(location.hash),
       canvases: [],
@@ -149,6 +193,12 @@ export class WebHost {
       cloudCanvases: null,
       cloudBusy: false,
       homeServer: null,
+      providers: [],
+      infoLoaded: false,
+      authError: null,
+      landing: null,
+      invites: null,
+      brand: deploymentBrand(),
     }
   }
 
@@ -185,10 +235,16 @@ export class WebHost {
 
   async start() {
     await this.refresh()
-    // A first visit opens a canvas straight away rather than an empty list.
+    const home = await homeServerInfo()
+    this.set({ homeServer: home?.server ?? null, providers: home?.providers ?? [], infoLoaded: true })
+    if (this.returned) await this.finishSignIn(this.returned.result, this.returned.provider)
+    this.returned = null
     void this.refreshCloud()
-    void servedByServer().then(homeServer => this.set({ homeServer }))
-    if (this.state.route.view === 'home' && this.state.canvases.length === 0 && !this.state.cloud && !sessionStorage.getItem('canvas-app:home')) {
+    void this.refreshInvites()
+    // A first visit opens a canvas straight away rather than an empty list — unless this page's
+    // server signs people in, where the list leads with that.
+    const signsIn = this.state.providers.length > 0
+    if (this.state.route.view === 'home' && this.state.canvases.length === 0 && !this.state.cloud && !signsIn && !sessionStorage.getItem('canvas-app:home')) {
       const record = await this.create('My canvas')
       this.navigate({ view: 'canvas', id: record.id })
       return
@@ -282,11 +338,44 @@ export class WebHost {
     else void this.route(route)
   }
 
+  /** Go to `route` in place of the current one (a share link becomes its canvas; Back skips it). */
+  private replaceRoute(route: Route) {
+    history.replaceState(history.state, '', `${location.pathname}${location.search}${routeHash(route)}`)
+    return this.route(route)
+  }
+
+  private get currentRoute() {
+    return this.state.route
+  }
+
+  private arrivalDeps(): ArrivalDeps {
+    const client = this.client()
+    const missing = () => Promise.reject(new Error('Sign in first.'))
+    return {
+      session: this.state.cloud,
+      homeServer: this.state.homeServer,
+      local: id => this.db.get(id),
+      fetch: id => (client ? client.canvas(id) : missing()),
+      join: token => (client ? client.join(token) : missing()),
+      keep: c => this.keepCloud(c),
+    }
+  }
+
   private async route(route: Route) {
-    this.set({ route, sharing: false })
+    this.cancelFocus()
+    this.set({ route, sharing: false, landing: null })
     if (route.view === 'join') {
       document.title = 'Join a canvas · Canvas'
-      if (this.state.cloud) await this.join(route.token)
+      if (this.state.cloud) this.set({ landing: { kind: 'busy', text: 'Opening the shared canvas…' } })
+      const arrival = await arriveAtJoin(route.token, this.arrivalDeps())
+      if (!sameRoute(this.currentRoute, route)) return
+      if (arrival.do === 'open') {
+        void this.refreshCloud()
+        void this.refreshInvites()
+        await this.replaceRoute({ view: 'canvas', id: arrival.record.id })
+        return
+      }
+      await this.land(arrival, 'join')
       return
     }
     if (route.view === 'home') {
@@ -295,16 +384,40 @@ export class WebHost {
       await this.refresh()
       return
     }
-    await this.open(route.id)
+    await this.open(route.id, route.focus)
   }
 
-  private async open(id: string) {
-    const record = await this.db.get(id)
-    if (!record) {
+  /** Show what an arrival that does not open a canvas means. */
+  private async land(arrival: Exclude<Arrival, { do: 'open' }>, reason: 'join' | 'canvas') {
+    // The canvas open before (if any) stays under the card, no longer live.
+    this.closeRoom()
+    if (arrival.do === 'signin') {
+      // A session the server no longer takes is ended here too.
+      if (this.state.cloud) await this.endSession('Your session on the canvas server ended; sign in again.')
+      document.title = reason === 'join' ? 'Join a canvas · Canvas' : 'Sign in · Canvas'
+      this.set({ landing: { kind: 'signin', reason } })
+      return
+    }
+    if (arrival.do === 'missing') {
       this.fail('That canvas is not in this browser.')
       this.navigate({ view: 'home' })
       return
     }
+    document.title = 'Canvas'
+    this.set({ landing: { kind: 'error', code: arrival.code, message: arrival.message } })
+  }
+
+  private async open(id: string, focus?: string) {
+    const route = this.currentRoute
+    const local = await this.db.get(id)
+    if (!local && this.state.cloud) this.set({ landing: { kind: 'busy', text: 'Opening canvas…' } })
+    const arrival = await arriveAtCanvas(id, this.arrivalDeps())
+    if (!sameRoute(this.currentRoute, route)) return
+    if (arrival.do !== 'open') {
+      await this.land(arrival, 'canvas')
+      return
+    }
+    const record = arrival.record
     // Wait for queued writes, so the log read back holds everything.
     await this.writes
     const log = await this.db.updates(id)
@@ -325,11 +438,12 @@ export class WebHost {
     }
     this.openId = id
     this.api.init({ docId: record.cloud?.canvasId ?? id, name: record.name, kind: record.kind, me: this.state.me, state, online, readOnly: false, place: PLACE })
+    if (focus) this.focusOn(id, focus, online)
     this.api.setStatus(record.cloud ? { mode: online ? (record.kind === 'personal' ? 'personal-synced' : 'shared-live') : record.kind === 'shared' ? 'shared-offline' : 'local' } : null)
     this.api.setNav({ home: true })
     this.api.setShare(record.kind === 'personal' && record.cloud ? { canShare: false, reason: 'Personal canvases cannot be shared' } : { canShare: true })
     document.title = `${record.name} · Canvas`
-    this.set({ current: record })
+    this.set({ current: record, landing: null })
     // A log of several entries (another tab's edits, or one too small to compact) is merged
     // on every open; store the merge once the board is up, so the next open reads one row.
     if (log.length > 1) setTimeout(() => this.compactOpen(id), 1500)
@@ -339,6 +453,32 @@ export class WebHost {
     this.room?.close()
     this.room = null
     clearInterval(this.snapshotTimer)
+  }
+
+  /**
+   * Fit `shape` once the board holds it. Online, wait for the room's first sync (a cached copy
+   * may hold it somewhere it no longer is); if the room is slow, look anyway after a while.
+   */
+  private focusOn(canvasId: string, shape: string, online: boolean) {
+    this.cancelFocus()
+    const look = () => {
+      clearTimeout(this.focusFallback)
+      if (this.room) this.room.onSynced = null
+      this.stopFocus = focusWhenPresent(this.api, shape, { stillWanted: () => this.openId === canvasId })
+    }
+    if (!online || !this.room) {
+      look()
+      return
+    }
+    this.room.onSynced = look
+    this.focusFallback = setTimeout(look, 8000)
+  }
+
+  private cancelFocus() {
+    clearTimeout(this.focusFallback)
+    if (this.room) this.room.onSynced = null
+    this.stopFocus?.()
+    this.stopFocus = null
   }
 
   private compactOpen(id: string) {
@@ -355,22 +495,63 @@ export class WebHost {
   async connect(opts: { server: string; email: string; password: string; signup: boolean; displayName?: string }) {
     const { server, key } = parseServer(opts.server)
     const session = await new CloudClient(server, key).signIn(opts.email, opts.password, { signup: opts.signup, device: device(), displayName: opts.displayName })
+    await this.signedIn(session)
+  }
+
+  /** Keep a new session (password or single sign-on alike), then carry on where the person was. */
+  private async signedIn(session: CloudSession) {
     localStorage.setItem(CLOUD_KEY, JSON.stringify(session))
-    this.set({ cloud: session, me: { ...this.state.me, name: session.user.display_name || this.state.me.name } })
+    this.set({ cloud: session, authError: null, me: { ...this.state.me, name: session.user.display_name || this.state.me.name } })
+    void this.refreshInvites()
     await this.refreshCloud()
-    if (this.state.route.view === 'join') await this.join(this.state.route.token)
+    // A link that waited for the sign-in opens now (joining again is harmless).
+    if (this.state.landing?.kind === 'signin') await this.route(this.state.route)
+  }
+
+  /** Sign in with a provider of this page's server: leaves the page, comes back with `#token=…`. */
+  signInWith(provider: OidcProvider) {
+    const server = this.state.homeServer
+    if (!server) return
+    stashSignIn({ hash: routeHash(this.state.route), provider: provider.name })
+    this.set({ authError: null })
+    location.assign(oidcStartUrl(server, provider, redirectTarget(location)))
+  }
+
+  /** The provider's answer: keep the session, or say why there is none. */
+  private async finishSignIn(result: AuthResult, provider?: string) {
+    const domain = this.state.brand?.domain ?? null
+    if (result.kind === 'error') {
+      this.set({ authError: signInErrorMessage(result.code, result.description, { provider, domain }) })
+      return
+    }
+    const server = this.state.homeServer ?? location.origin
+    try {
+      const user = await new CloudClient(server, undefined, result.token).me()
+      await this.signedIn({ server, token: result.token, user })
+    } catch (error) {
+      this.set({ authError: (error as { status?: number }).status === 0 ? message(error) : signInErrorMessage('session_check_failed', '', { provider, domain }) })
+    }
   }
 
   async disconnect() {
     const client = this.client()
     localStorage.removeItem(CLOUD_KEY)
     this.closeRoom()
-    this.set({ cloud: null, cloudCanvases: null })
+    this.set({ cloud: null, cloudCanvases: null, invites: null })
     try {
       await client?.signOut()
     } catch {
       // Signed out here either way; the server's session expires on its own.
     }
+    // An open server canvas can't stay live without a session.
+    if (this.state.route.view === 'canvas' && this.state.current?.cloud) await this.route(this.state.route)
+  }
+
+  /** The server refused the session: forget it, and say so. */
+  private async endSession(why: string) {
+    localStorage.removeItem(CLOUD_KEY)
+    this.closeRoom()
+    this.set({ cloud: null, cloudCanvases: null, invites: null, authError: why })
   }
 
   async refreshCloud() {
@@ -388,16 +569,52 @@ export class WebHost {
     }
   }
 
+  /** Invites waiting for you; a failure only hides the list. */
+  async refreshInvites() {
+    const client = this.client()
+    if (!client) return
+    try {
+      this.set({ invites: await client.invites() })
+    } catch {
+      this.set({ invites: null })
+    }
+  }
+
+  /** Accept an invite and open its canvas. */
+  async acceptInvite(invite: CloudInvite) {
+    const client = this.client()
+    if (!client) return
+    const c = await client.acceptInvite(invite.id)
+    this.set({ invites: (this.state.invites ?? []).filter(i => i.id !== invite.id) })
+    void this.refreshCloud()
+    await this.openCloud(c)
+  }
+
+  async declineInvite(invite: CloudInvite) {
+    const client = this.client()
+    if (!client) return
+    await client.declineInvite(invite.id)
+    this.set({ invites: (this.state.invites ?? []).filter(i => i.id !== invite.id) })
+  }
+
   /** Open a canvas from the server: its local copy, created on first open. */
   async openCloud(c: CloudCanvas) {
-    const session = this.state.cloud
-    if (!session) return
-    const now = Date.now()
-    const existing = await this.db.get(c.id)
-    const cloud = { server: session.server, canvasId: c.id }
-    if (existing) await this.db.patch(c.id, { name: c.name, kind: c.kind, cloud })
-    else await this.db.put({ id: c.id, name: c.name, kind: c.kind, createdAt: now, updatedAt: now, cloud })
+    if (!this.state.cloud) return
+    await this.keepCloud(c)
     this.navigate({ view: 'canvas', id: c.id })
+  }
+
+  /** The local record of a server canvas: made on first open, its name and kind kept current. */
+  private async keepCloud(c: CloudCanvas): Promise<CanvasRecord> {
+    const session = this.state.cloud
+    if (!session) throw new Error('Sign in to a canvas server first.')
+    const now = Date.now()
+    const cloud = { server: session.server, canvasId: c.id }
+    const next = await this.db.patch(c.id, { name: c.name, kind: c.kind, cloud })
+    if (next) return next
+    const record: CanvasRecord = { id: c.id, name: c.name, kind: c.kind, createdAt: now, updatedAt: now, cloud }
+    await this.db.put(record)
+    return record
   }
 
   /** A share link anyone can open: in Copper, or here (`/canvas/#/join/…` on the server). */
@@ -407,6 +624,15 @@ export class WebHost {
     if (!record?.cloud || !client) throw new Error('Put the canvas on your canvas server first.')
     const link = await client.createLink(record.cloud.canvasId)
     return shareUrl(record.cloud.server, link.token)
+  }
+
+  /** A new canvas on the server, opened. */
+  async createOnServer(name = 'Untitled canvas') {
+    const client = this.client()
+    if (!client) throw new Error('Sign in to a canvas server first.')
+    const c = await client.create(name)
+    void this.refreshCloud()
+    await this.openCloud(c)
   }
 
   /** Make a canvas of this browser a shared one on the server, carrying what it holds. */
@@ -428,19 +654,6 @@ export class WebHost {
     await this.refreshCloud()
     this.navigate({ view: 'canvas', id: next.id })
     return next
-  }
-
-  private async join(token: string) {
-    const client = this.client()
-    if (!client) return
-    try {
-      const c = await client.join(token)
-      await this.refreshCloud()
-      await this.openCloud(c)
-    } catch (error) {
-      this.fail(message(error))
-      this.navigate({ view: 'home' })
-    }
   }
 
   // ---- canvases -------------------------------------------------------------------
@@ -507,6 +720,15 @@ export class WebHost {
 
   fail(error: string | null) {
     this.set({ error })
+  }
+
+  clearAuthError() {
+    this.set({ authError: null })
+  }
+
+  /** Try the current route again (a canvas that failed to open). */
+  retry() {
+    void this.route(this.state.route)
   }
 }
 
