@@ -460,7 +460,7 @@ export function Board({ session }: { session: Session }) {
   }, [live, flight])
 
   const zoomToIds = useCallback(
-    (ids: readonly string[]) => {
+    (ids: readonly string[], fit = false) => {
       // Shapes written a moment ago (an import, an agent's ops) may not be rendered yet: read the doc.
       const boxes = ids
         .map(id => {
@@ -473,7 +473,7 @@ export function Board({ session }: { session: Session }) {
       const u = unionBox(boxes)
       if (!u) return false
       const { w, h } = sizeRef.current
-      const target = ids.length === 1 ? revealView(u, viewRef.current, w, h, { padding: 96 }) : fitBoxes([u], w, h, 96, 1.5)
+      const target = ids.length === 1 && !fit ? revealView(u, viewRef.current, w, h, { padding: 96 }) : fitBoxes([u], w, h, 96, 1.5)
       flight.fly(target)
       return true
     },
@@ -485,7 +485,7 @@ export function Board({ session }: { session: Session }) {
     zoomRef.current = zoomToIds
   })
   useEffect(() => {
-    controller.attachBoard({ zoomTo: ids => zoomRef.current(ids) })
+    controller.attachBoard({ zoomTo: (ids, fit) => zoomRef.current(ids, fit) })
     return () => controller.attachBoard(null)
   }, [])
   // For measuring: how long each render took to commit (`debug.ts`).

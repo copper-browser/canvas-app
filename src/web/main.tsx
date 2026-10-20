@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import { CanvasDb } from './store'
 import { WebHost } from './host'
 import { WebShell } from './Home'
+import './web.css'
 
 async function boot() {
   let db: CanvasDb

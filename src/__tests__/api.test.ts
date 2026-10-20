@@ -50,6 +50,22 @@ describe('window.copperCanvas', () => {
     expect(() => api.zoomTo(['a'])).not.toThrow()
   })
 
+  it('zoomTo fits and centres only when asked, before and after the board is up', () => {
+    const calls: [string[], boolean | undefined][] = []
+    api.zoomTo(['a'], { fit: true })
+    c.attachBoard({ zoomTo: (ids, fit) => (calls.push([ids, fit]), true) })
+    api.zoomTo('["b"]')
+    api.zoomTo(['c'], '{"fit":true}')
+    api.zoomTo(['d'], 'not json')
+    expect(calls).toEqual([
+      [['a'], true],
+      [['b'], false],
+      [['c'], true],
+      [['d'], false],
+    ])
+    c.attachBoard(null)
+  })
+
   it('sets share capability and ignores unknown fields', () => {
     api.setShare({ canShare: true, members: 3, reason: 'unused', ignored: true })
     expect(c.getShare()).toEqual({ canShare: true, members: 3, reason: 'unused' })

@@ -3,30 +3,64 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { Cloud, Code2, Copy, Download, FileUp, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { WebHost } from './host'
 import type { CanvasRecord } from './store'
-import { CloudSection, ConnectForm } from './CloudPanel'
+import { CloudSection } from './CloudPanel'
+import { AccountMenu } from './Account'
+import { InvitesSection } from './Invites'
+import { BrandLockup, Card, LandingScreen, SignInOptions } from './SignIn'
 
 const REPO = 'https://github.com/copper-browser/canvas-app'
 
 export function WebShell({ host }: { host: WebHost }) {
   const state = useSyncExternalStore(host.subscribe, host.getState)
+  const [localOnly, setLocalOnly] = useState(false)
+  // Served by a server that signs people in: signed out, the list is its sign-in (with a way
+  // to this browser's own canvases when there are any).
+  const signInFirst = state.route.view === 'home' && !state.cloud && state.providers.length > 0 && !localOnly
   return (
     <>
-      {state.route.view === 'home' && <Home host={host} />}
-      {state.route.view === 'join' && !state.cloud && <JoinScreen host={host} />}
+      {state.route.view === 'home' && (signInFirst ? <HomeSignIn host={host} onLocal={() => setLocalOnly(true)} /> : <Home host={host} />)}
+      {state.route.view !== 'home' && state.landing && <LandingScreen host={host} landing={state.landing} />}
       {state.sharing && state.current && <ShareSheet host={host} canvas={state.current} />}
       {state.error && <Toast text={state.error} onClose={() => host.fail(null)} />}
     </>
   )
 }
 
+function HomeSignIn({ host, onLocal }: { host: WebHost; onLocal: () => void }) {
+  const { brand, canvases: all, homeServer } = useSyncExternalStore(host.subscribe, host.getState)
+  // Copies of this server's canvases need the sign-in anyway; offer only the browser's own.
+  const canvases = all.filter(c => !c.cloud || c.cloud.server !== homeServer)
+  return (
+    <Card brand={brand} label="Sign in to Canvas">
+      <div className="mb-5 flex h-[22px] items-center">{brand ? <BrandLockup brand={brand} /> : <span className="text-[13px] font-semibold text-ink-2">Canvas</span>}</div>
+      <h1 className="text-[22px] font-bold leading-tight tracking-[-0.015em]">Sign in to Canvas</h1>
+      <p className="mt-2 text-[14px] leading-relaxed text-ink-2">Open the canvases shared with you and work on them together, live — here or in Copper.</p>
+      <SignInOptions host={host} />
+      {canvases.length > 0 && (
+        <button type="button" onClick={onLocal} className="mt-3 text-[12.5px] text-ink-3 underline-offset-2 outline-none hover:text-ink hover:underline focus-visible:underline">
+          Open the {canvases.length === 1 ? 'canvas' : `${canvases.length} canvases`} saved in this browser
+        </button>
+      )}
+    </Card>
+  )
+}
+
 function Home({ host }: { host: WebHost }) {
-  const { canvases: all, me, cloud, cloudCanvases } = useSyncExternalStore(host.subscribe, host.getState)
+  const { canvases: all, me, cloud, cloudCanvases, brand } = useSyncExternalStore(host.subscribe, host.getState)
   // Canvases on Copper Cloud are listed with the server's; their local copies show here only
   // while that list is out of reach (signed out, offline).
   const canvases = cloud && cloudCanvases ? all.filter(c => !c.cloud) : all
   const fileInput = useRef<HTMLInputElement>(null)
   const open = (id: string) => host.navigate({ view: 'canvas', id })
-  const create = async () => open((await host.create()).id)
+  const create = async () => {
+    try {
+      // Signed in, a new canvas lives on the server (shareable at once); otherwise in this browser.
+      if (cloud) await host.createOnServer()
+      else open((await host.create()).id)
+    } catch (error) {
+      host.fail(error instanceof Error ? error.message : String(error))
+    }
+  }
   const importFile = async (file: File) => {
     try {
       open((await host.importFile(await file.text())).id)
@@ -38,31 +72,58 @@ function Home({ host }: { host: WebHost }) {
     <div role="dialog" aria-label="Canvases" className="fixed inset-0 z-[100] overflow-y-auto bg-bg text-ink">
       <div className="mx-auto flex min-h-full max-w-[960px] flex-col px-6 pb-10 pt-10">
         <header className="flex flex-wrap items-center gap-3">
-          <h1 className="mr-auto text-[22px] font-semibold tracking-[-0.01em]">Canvases</h1>
-          <NameField key={me.name} name={me.name} onSave={name => host.setName(name)} />
-          <Button onClick={() => fileInput.current?.click()} icon={<FileUp className="h-4 w-4" />}>
-            Open file
-          </Button>
-          <Button primary onClick={() => void create()} icon={<Plus className="h-4 w-4" />}>
-            New canvas
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".canvas,application/json"
-            className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (file) void importFile(file)
-            }}
-          />
+          <h1 className="mr-auto flex items-center gap-2.5 text-[22px] font-semibold tracking-[-0.01em]">
+            {brand && <img src={brand.icon} alt={brand.name} className="h-[22px] w-[22px]" />}
+            Canvases
+          </h1>
+          {/* Narrow screens: the account stays beside the title, the actions take the next row. */}
+          <div className="order-last flex w-full flex-wrap items-center gap-3 sm:order-none sm:w-auto">
+            {!cloud && <NameField key={me.name} name={me.name} onSave={name => host.setName(name)} />}
+            <Button onClick={() => fileInput.current?.click()} icon={<FileUp className="h-4 w-4" />}>
+              Open file
+            </Button>
+            <Button primary onClick={() => void create()} icon={<Plus className="h-4 w-4" />}>
+              New canvas
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".canvas,application/json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) void importFile(file)
+              }}
+            />
+          </div>
+          <AccountMenu host={host} />
         </header>
-        <p className="mt-1.5 text-[13px] text-ink-3">
-          {cloud ? 'In this browser' : 'Saved in this browser. Download one as a file to keep or send it, or sign in to a canvas server below to share it live.'}
-        </p>
 
-        {canvases.length === 0 ? (
+        {cloud && (
+          <>
+            <InvitesSection host={host} />
+            <CloudSection host={host} />
+          </>
+        )}
+
+        {cloud ? (
+          canvases.length > 0 && (
+            <section className="mt-10">
+              <h2 className="text-[14px] font-semibold">In this browser</h2>
+              <p className="mt-1 text-[12.5px] text-ink-3">Only here. Open one and use Share to put it on your canvas server.</p>
+              <ul className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+                {canvases.map(c => (
+                  <CanvasCard key={c.id} canvas={c} host={host} onOpen={() => open(c.id)} />
+                ))}
+              </ul>
+            </section>
+          )
+        ) : (
+          <p className="mt-1.5 text-[13px] text-ink-3">Saved in this browser. Download one as a file to keep or send it, or sign in to a canvas server below to share it live.</p>
+        )}
+
+        {cloud ? null : canvases.length === 0 ? (
           <div className="mt-16 flex flex-col items-center gap-3 text-center text-ink-3">
             <p className="text-[14px]">No canvases in this browser yet.</p>
             <Button primary onClick={() => void create()} icon={<Plus className="h-4 w-4" />}>
@@ -77,7 +138,7 @@ function Home({ host }: { host: WebHost }) {
           </ul>
         )}
 
-        <CloudSection host={host} />
+        {!cloud && <CloudSection host={host} />}
 
         <footer className="mt-auto pt-12 text-[12px] text-ink-4">
           Canvas is open source, from the{' '}
@@ -232,17 +293,6 @@ function ShareSheet({ host, canvas }: { host: WebHost; canvas: CanvasRecord }) {
         </>
       )}
     </Modal>
-  )
-}
-
-function JoinScreen({ host }: { host: WebHost }) {
-  return (
-    <div role="dialog" aria-label="Join a canvas" className="fixed inset-0 z-[100] overflow-y-auto bg-bg text-ink">
-      <div className="mx-auto max-w-[480px] px-6 pt-16">
-        <h1 className="text-[22px] font-semibold tracking-[-0.01em]">Someone shared a canvas with you</h1>
-        <ConnectForm host={host} note="Sign in to its canvas server to open it." />
-      </div>
-    </div>
   )
 }
 

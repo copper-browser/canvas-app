@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fromBase64, toBase64 } from '../../canvas/base64'
-import { CloudClient, CloudError, parseServer, roomUrl, servedByServer, shareUrl } from '../cloud'
+import { CloudClient, CloudError, homeServerInfo, parseServer, roomUrl, servedByServer, shareUrl } from '../cloud'
 import { CLOSE_REVOKED, RoomRelay } from '../room'
 
 describe('parseServer', () => {
@@ -31,6 +31,18 @@ describe('urls', () => {
     expect(await servedByServer('https://c.example', json)).toBe('https://c.example')
     expect(await servedByServer('http://localhost:8080', html)).toBeNull()
     expect(await servedByServer('file://', json)).toBeNull()
+  })
+
+  it('lists the sign-in providers of the server that serves the app', async () => {
+    const info = { name: 'canvas-cloud', auth: { oidc: [{ id: 'google', name: 'Google', start: '/v1/auth/oidc/google/start' }], password: true } }
+    const json = (async () => new Response(JSON.stringify(info), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+    expect(await homeServerInfo('https://canvas.dev.exowatt.com', json)).toEqual({
+      server: 'https://canvas.dev.exowatt.com',
+      providers: [{ id: 'google', name: 'Google', start: '/v1/auth/oidc/google/start' }],
+    })
+    const hangs = ((_url: string, init?: RequestInit) =>
+      new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))) as unknown as typeof fetch
+    expect(await homeServerInfo('https://slow.example', hangs, 10)).toBeNull()
   })
 })
 
@@ -72,6 +84,30 @@ describe('CloudClient', () => {
       const c = new CloudClient('https://c.example', undefined, null, fake(status, { error, message: 'raw' }))
       await expect(c.signIn('a@b.c', 'pw', { signup: true, device: { id: 'd', name: 'n' } })).rejects.toMatchObject({ status, code: error, message: expect.stringMatching(text) })
     }
+  })
+
+  it('asks who a single sign-on token is, and handles invites', async () => {
+    const seen: { url?: string; init?: RequestInit }[] = []
+    const user = { id: 'u', email: 'ada@exowatt.com', display_name: 'Ada' }
+    const me = new CloudClient('https://c.example', undefined, 'cvs_T', fake(200, { user, via: 'session' }, seen))
+    expect(await me.me()).toEqual(user)
+    expect(seen[0]!.url).toBe('https://c.example/v1/auth/me')
+    expect((seen[0]!.init!.headers as Record<string, string>).authorization).toBe('Bearer cvs_T')
+    await expect(new CloudClient('https://c.example', undefined, 'T', fake(200, {})).me()).rejects.toBeInstanceOf(CloudError)
+
+    const invite = { id: 'i1', canvas_id: 'c1', canvas_name: 'Roadmap', email: 'ada@exowatt.com', status: 'pending', invited_by: null, created_at: '' }
+    expect(await new CloudClient('https://c.example', undefined, 'T', fake(200, [invite, { ...invite, id: 'i2', status: 'revoked' }])).invites()).toEqual([invite])
+    expect(await new CloudClient('https://c.example', undefined, 'T', fake(200, { invites: [invite] })).invites()).toEqual([invite])
+    const calls: { url?: string; init?: RequestInit }[] = []
+    const c = new CloudClient('https://c.example', undefined, 'T', fake(200, { ok: true }, calls))
+    await c.acceptInvite('i/1')
+    await c.declineInvite('i1')
+    await c.canvas('c1')
+    expect(calls.map(x => `${x.init!.method} ${x.url}`)).toEqual([
+      'POST https://c.example/v1/invites/i%2F1/accept',
+      'POST https://c.example/v1/invites/i1/decline',
+      'GET https://c.example/v1/canvases/c1',
+    ])
   })
 
   it('turns server errors into sentences', async () => {
@@ -133,6 +169,19 @@ describe('RoomRelay', () => {
     s.onmessage!({ data: new Uint8Array([7, 8]).buffer } as MessageEvent)
     expect([...fromBase64(frames[0]!)]).toEqual([7, 8])
     expect(states).toEqual(['open'])
+  })
+
+  it('says once per connection when the server’s sync step 2 arrives', () => {
+    const { relay } = setup()
+    let synced = 0
+    relay.onSynced = () => synced++
+    relay.connect()
+    const s = FakeSocket.last
+    s.onmessage!({ data: new Uint8Array([0, 0, 5]).buffer } as MessageEvent)
+    expect(synced).toBe(0)
+    s.onmessage!({ data: new Uint8Array([0, 1, 5]).buffer } as MessageEvent)
+    s.onmessage!({ data: new Uint8Array([0, 1, 6]).buffer } as MessageEvent)
+    expect(synced).toBe(1)
   })
 
   it('a new ask drops the old socket silently', () => {
