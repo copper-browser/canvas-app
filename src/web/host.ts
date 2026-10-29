@@ -46,6 +46,11 @@ export type Landing = { kind: 'signin'; reason: 'join' | 'canvas' } | { kind: 'b
 /** How often an open cloud canvas folds what the room sent into its local copy. */
 export const CLOUD_SNAPSHOT_MS = 60_000
 
+/** A room socket the server hasn't said a word on by then is dropped, and the page reconnects. */
+export const SYNC_NUDGE_MS = 5_000
+/** A canvas still loading by then (nothing cached, nothing from the server) says so, with Try again. */
+export const SYNC_GIVE_UP_MS = 30_000
+
 export interface HostState {
   route: Route
   canvases: CanvasRecord[]
@@ -171,6 +176,10 @@ export class WebHost {
   private returned: { result: AuthResult; provider?: string } | null = null
   private stopFocus: (() => void) | null = null
   private focusFallback: ReturnType<typeof setTimeout> | undefined
+  /** A deep link's shape not fitted yet: every room sync looks for it again until it is. */
+  private pendingFocus: { canvasId: string; shape: string } | null = null
+  /** The open's load watchdogs (a quiet socket, a load that never finishes). */
+  private syncTimers: ReturnType<typeof setTimeout>[] = []
 
   constructor(private readonly db: CanvasDb) {
     const cloud = loadSession()
@@ -363,6 +372,7 @@ export class WebHost {
 
   private async route(route: Route) {
     this.cancelFocus()
+    this.clearSyncWatch()
     this.set({ route, sharing: false, landing: null })
     if (route.view === 'join') {
       document.title = 'Join a canvas · Canvas'
@@ -411,6 +421,7 @@ export class WebHost {
     const route = this.currentRoute
     const local = await this.db.get(id)
     if (!local && this.state.cloud) this.set({ landing: { kind: 'busy', text: 'Opening canvas…' } })
+    this.giveUpLoading(route)
     const arrival = await arriveAtCanvas(id, this.arrivalDeps())
     if (!sameRoute(this.currentRoute, route)) return
     if (arrival.do !== 'open') {
@@ -433,6 +444,7 @@ export class WebHost {
         () => this.api,
         code => this.fail(code === CLOSE_DELETED ? 'This canvas was deleted on its server.' : 'You no longer have access to this canvas.')
       )
+      this.room.onSynced = () => this.roomSynced(id)
       // What the room sends never comes back as an update to keep; fold it in now and then.
       this.snapshotTimer = setInterval(() => this.compactOpen(id), CLOUD_SNAPSHOT_MS)
     }
@@ -443,7 +455,10 @@ export class WebHost {
     this.api.setNav({ home: true })
     this.api.setShare(record.kind === 'personal' && record.cloud ? { canShare: false, reason: 'Personal canvases cannot be shared' } : { canShare: true })
     document.title = `${record.name} · Canvas`
-    this.set({ current: record, landing: null })
+    // Nothing cached: the board stays empty until the server's copy arrives, so say it is loading.
+    const loading = online && !state
+    this.set({ current: record, landing: loading ? { kind: 'busy', text: `Loading ${record.name}…` } : null })
+    if (online) this.nudgeQuietRoom(id)
     // A log of several entries (another tab's edits, or one too small to compact) is merged
     // on every open; store the merge once the board is up, so the next open reads one row.
     if (log.length > 1) setTimeout(() => this.compactOpen(id), 1500)
@@ -455,28 +470,75 @@ export class WebHost {
     clearInterval(this.snapshotTimer)
   }
 
+  /** The room's sync for this connection: the board now holds what the server has. */
+  private roomSynced(id: string) {
+    if (this.openId !== id) return
+    this.clearSyncWatch()
+    if (this.state.landing?.kind === 'busy') this.set({ landing: null })
+    const pending = this.pendingFocus
+    if (pending && pending.canvasId === id) this.lookFor(id, pending.shape)
+  }
+
+  /** A socket the server hasn't greeted gets dropped once; told it closed, the page reconnects. */
+  private nudgeQuietRoom(id: string) {
+    const timer = setTimeout(() => {
+      const room = this.room
+      if (this.openId !== id || !room || room.ended !== null || room.isSynced || room.hasHeard) return
+      // A hidden tab may be suspended, its socket's frames not handed over yet: look again later.
+      if (document.visibilityState === 'hidden') return this.nudgeQuietRoom(id)
+      room.close()
+      this.api.wsState('closed')
+    }, SYNC_NUDGE_MS)
+    this.syncTimers.push(timer)
+  }
+
+  /** A load still covered by its busy card after a long while: say so, with Try again. */
+  private giveUpLoading(route: Route, after = SYNC_GIVE_UP_MS) {
+    const timer = setTimeout(() => {
+      if (!sameRoute(this.currentRoute, route) || this.state.landing?.kind !== 'busy') return
+      // A hidden tab, or one just back from being suspended (its socket only now reconnecting),
+      // has not really waited that long: give it more time rather than a false failure.
+      const fresh = !!this.room && Date.now() - this.room.connectedAt < SYNC_GIVE_UP_MS / 2
+      if (document.visibilityState === 'hidden' || fresh) return this.giveUpLoading(route, SYNC_NUDGE_MS * 2)
+      this.closeRoom()
+      this.set({ landing: { kind: 'error', code: 'failed', message: 'The canvas server didn’t send this canvas in time. Check your connection, then try again.' } })
+    }, after)
+    this.syncTimers.push(timer)
+  }
+
+  private clearSyncWatch() {
+    for (const timer of this.syncTimers.splice(0)) clearTimeout(timer)
+  }
+
   /**
-   * Fit `shape` once the board holds it. Online, wait for the room's first sync (a cached copy
-   * may hold it somewhere it no longer is); if the room is slow, look anyway after a while.
+   * Fit `shape` once the board holds it. Online, wait for the room's sync (a cached copy may hold
+   * it somewhere it no longer is); if the room is slow, look anyway after a while. A sync that
+   * comes later still looks again, until the shape has been fitted once.
    */
   private focusOn(canvasId: string, shape: string, online: boolean) {
     this.cancelFocus()
-    const look = () => {
-      clearTimeout(this.focusFallback)
-      if (this.room) this.room.onSynced = null
-      this.stopFocus = focusWhenPresent(this.api, shape, { stillWanted: () => this.openId === canvasId })
-    }
+    this.pendingFocus = { canvasId, shape }
     if (!online || !this.room) {
-      look()
+      this.lookFor(canvasId, shape)
       return
     }
-    this.room.onSynced = look
-    this.focusFallback = setTimeout(look, 8000)
+    this.focusFallback = setTimeout(() => this.lookFor(canvasId, shape), 8000)
+  }
+
+  private lookFor(canvasId: string, shape: string) {
+    clearTimeout(this.focusFallback)
+    this.stopFocus?.()
+    this.stopFocus = focusWhenPresent(this.api, shape, {
+      stillWanted: () => this.openId === canvasId && this.pendingFocus?.shape === shape,
+      onFound: () => {
+        if (this.pendingFocus?.canvasId === canvasId) this.pendingFocus = null
+      },
+    })
   }
 
   private cancelFocus() {
     clearTimeout(this.focusFallback)
-    if (this.room) this.room.onSynced = null
+    this.pendingFocus = null
     this.stopFocus?.()
     this.stopFocus = null
   }

@@ -93,6 +93,22 @@ describe('focusWhenPresent', () => {
     expect(boardHas(throwing, 'f1')).toBe(false)
   })
 
+  it('says once that it found and fitted the shape', () => {
+    const t = setup()
+    const found = vi.fn()
+    focusWhenPresent(t.page, 'f1', { ...t.opts, intervalMs: 250, onFound: found })
+    t.advance(1000)
+    expect(found).not.toHaveBeenCalled()
+    t.shapes.push('f1')
+    t.advance(5000)
+    expect(found).toHaveBeenCalledTimes(1)
+    const gone = setup()
+    const never = vi.fn()
+    focusWhenPresent(gone.page, 'gone', { ...gone.opts, timeoutMs: 2000, onFound: never })
+    gone.advance(10_000)
+    expect(never).not.toHaveBeenCalled()
+  })
+
   it('finds frames listed apart from shapes', () => {
     expect(boardHas({ read: () => JSON.stringify({ shapes: [], frames: [{ id: 'f1' }] }) }, 'f1')).toBe(true)
   })
