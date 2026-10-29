@@ -15,6 +15,8 @@ export interface FocusOptions {
   intervalMs?: number
   /** False once the person has moved on (another canvas, home): stop quietly. */
   stillWanted?: () => boolean
+  /** Called once, right after the shape was found and fitted. */
+  onFound?: () => void
   now?: () => number
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
@@ -44,6 +46,7 @@ export function focusWhenPresent(page: FocusPage, id: string, opts: FocusOptions
     if (boardHas(page, id)) {
       done = true
       page.zoomTo([id], { fit: true })
+      opts.onFound?.()
       return
     }
     if (now() - started < timeoutMs) handle = setTimer(tick, intervalMs)

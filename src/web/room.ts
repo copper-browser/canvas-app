@@ -36,6 +36,18 @@ export class RoomRelay {
   onSynced: (() => void) | null = null
   private synced = false
 
+  /** Whether this connection has delivered the server's sync step 2 yet. */
+  get isSynced() {
+    return this.synced
+  }
+  private heard = false
+  /** When the current connection was started (`Date.now()`), 0 before the first. */
+  connectedAt = 0
+  /** Whether the server has sent anything on this connection (it greets with sync step 1 at once). */
+  get hasHeard() {
+    return this.heard
+  }
+
   constructor(
     private readonly url: () => string,
     private readonly page: () => RoomPage,
@@ -58,11 +70,14 @@ export class RoomRelay {
       return
     }
     this.synced = false
+    this.heard = false
+    this.connectedAt = Date.now()
     socket.binaryType = 'arraybuffer'
     socket.onopen = () => this.socket === socket && this.page().wsState('open')
     socket.onmessage = e => {
       if (this.socket !== socket || !(e.data instanceof ArrayBuffer)) return
       const bytes = new Uint8Array(e.data)
+      this.heard = true
       this.page().wsMessage(toBase64(bytes))
       if (!this.synced && bytes[0] === 0 && bytes[1] === 1) {
         this.synced = true
