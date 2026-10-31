@@ -220,6 +220,16 @@ export function fitBoxes(boxes: Iterable<Box>, width: number, height: number, pa
   }
 }
 
+/**
+ * The whole board in view, as it opens: every shape but arrows fitted and centred with room
+ * around it, never closer than `maxZoom` (100%: a small board stays at its size, centred). An
+ * empty board shows its origin in the middle.
+ */
+export function wholeBoardView(shapes: Iterable<Box & { type: string }>, width: number, height: number, maxZoom = 1): View {
+  const boxes = [...shapes].filter(s => s.type !== 'arrow')
+  return boxes.length ? fitBoxes(boxes, width, height, 96, maxZoom) : { x: width / 2, y: height / 2, z: 1 }
+}
+
 /** The world rectangle a view shows in a `width` x `height` viewport. */
 export const visibleWorld = (view: View, width: number, height: number): Box => ({
   x: -view.x / view.z,

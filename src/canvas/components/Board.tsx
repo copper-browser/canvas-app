@@ -16,7 +16,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { controller, type Session } from '../../controller'
+import { controller, type BoardHandle, type Session, type ZoomOpts } from '../../controller'
 import { hasNativeHost, postToHost } from '../../host-bridge'
 import { findFreeSpot, occupied } from '../../placement'
 import { frameChildren, hostOf } from '../../ops'
@@ -33,6 +33,7 @@ import {
   screenToWorld,
   unionBox,
   visibleWorld,
+  wholeBoardView,
   zoomAt,
   zoomTo,
   type Box,
@@ -393,8 +394,7 @@ export function Board({ session }: { session: Session }) {
       setSize(prev => (prev.w === w && prev.h === h ? prev : { w, h }))
       if (!fitted.current && w > 0 && h > 0) {
         fitted.current = true
-        const boxes = [...store.getShapes().values()].filter(s => s.type !== 'arrow')
-        setView(boxes.length ? fitBoxes(boxes, w, h, 96, 1) : { x: w / 2, y: h / 2, z: 1 })
+        setView(wholeBoardView([...store.getShapes().values()], w, h))
       }
     }
     measure()
@@ -460,7 +460,15 @@ export function Board({ session }: { session: Session }) {
   }, [live, flight])
 
   const zoomToIds = useCallback(
-    (ids: readonly string[], fit = false) => {
+    (ids: readonly string[], fit = false, opts: ZoomOpts = {}) => {
+      const { w, h } = sizeRef.current
+      if (opts.all) {
+        // The whole board, as it first opens: read the doc, which a sync may have filled a moment ago.
+        const all = store.liveAll()
+        if (!all.some(s => s.type !== 'arrow')) return false
+        flight.fly(wholeBoardView(all, w, h, opts.maxZoom))
+        return true
+      }
       // Shapes written a moment ago (an import, an agent's ops) may not be rendered yet: read the doc.
       const boxes = ids
         .map(id => {
@@ -472,8 +480,7 @@ export function Board({ session }: { session: Session }) {
         .filter((b): b is Box => !!b)
       const u = unionBox(boxes)
       if (!u) return false
-      const { w, h } = sizeRef.current
-      const target = ids.length === 1 && !fit ? revealView(u, viewRef.current, w, h, { padding: 96 }) : fitBoxes([u], w, h, 96, 1.5)
+      const target = ids.length === 1 && !fit ? revealView(u, viewRef.current, w, h, { padding: 96 }) : fitBoxes([u], w, h, 96, opts.maxZoom ?? 1.5)
       flight.fly(target)
       return true
     },
@@ -484,10 +491,14 @@ export function Board({ session }: { session: Session }) {
   useEffect(() => {
     zoomRef.current = zoomToIds
   })
+  // Attached once the board has a size (and its first fit): a zoom asked while it mounts waits till then.
+  const sized = size.w > 0 && size.h > 0
   useEffect(() => {
-    controller.attachBoard({ zoomTo: (ids, fit) => zoomRef.current(ids, fit) })
-    return () => controller.attachBoard(null)
-  }, [])
+    if (!sized) return
+    const handle: BoardHandle = { zoomTo: (ids, fit, opts) => zoomRef.current(ids, fit, opts) }
+    controller.attachBoard(handle)
+    return () => controller.detachBoard(handle)
+  }, [sized])
   // For measuring: how long each render took to commit (`debug.ts`).
   useLayoutEffect(() => countCommit())
   // For measuring: when the doc's first board is on screen (performance marks, `canvas:*`).

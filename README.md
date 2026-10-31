@@ -44,6 +44,10 @@ bun run build && python3 -m http.server -d dist/web 8080   # → http://localhos
 
 - **Canvases live in the browser** (IndexedDB): each canvas's Yjs updates, appended as you work and
   compacted into a snapshot past 500, as Copper does on disk. `#/` lists them; `#/c/<id>` opens one.
+- **Opening a canvas shows all of it**: fitted to the window and centred, never zoomed in past
+  100%, once it has something on it (a cached copy at once, a server's after the room's first sync,
+  or after 8 s) — unless you have already panned, zoomed or clicked. `#/c/<id>?focus=<shape>` fits
+  that shape instead.
 - **Tabs of one browser stay in step**: an update made in one tab is drawn in the others
   (BroadcastChannel), and stored once.
 - **Files**: *Download* writes a `.canvas` file (`{"format":"canvas-app","version":1,name,state}`,
@@ -175,6 +179,8 @@ copperCanvas.read('{"full":false, "ids":["n1"], "types":["sticky"], "inView":tru
 
 copperCanvas.select(["n1", "n2"])           // also '["n1"]' or "n1"; not reported back as a selection message
 copperCanvas.zoomTo(["n1"])                 // animated flight to the shapes' bounds
+copperCanvas.zoomTo(["n1"], { fit: true })  // fit and centre them (zoomed in up to 150%)
+copperCanvas.zoomTo([], { all: true, maxZoom: 1 })  // the whole board, fitted and centred, never past 100%
 copperCanvas.setAgent({ id: "agent:scout", name: "Scout", color: "#2b9348",
                         cursor: { x: 120, y: 40 }, status: "thinking" })   // partial patches merge
 copperCanvas.setAgent({ id: "agent:scout", remove: true })

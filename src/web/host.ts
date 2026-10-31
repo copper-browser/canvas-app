@@ -6,8 +6,8 @@
  * canvas's Yjs log in IndexedDB (`store.ts`), opens canvases with
  * `copperCanvas.init`, relays updates between tabs of the same browser over a
  * BroadcastChannel, and routes on the URL hash: `#/` is the list of canvases,
- * `#/c/<id>` one canvas (`?focus=<shape>` fits that shape once it is there), `#/join/<token>`
- * a share link.
+ * `#/c/<id>` one canvas (`?focus=<shape>` fits that shape once it is there; without one, the whole
+ * board is fitted once it has something on it), `#/join/<token>` a share link.
  *
  * Signed in to a canvas server (canvas-cloud, or a Copper Cloud; `cloud.ts`), a
  * canvas that lives there keeps its local copy here and opens online: the page's
@@ -24,7 +24,7 @@ import { CloudClient, homeServerInfo, parseServer, roomUrl, shareUrl, type Cloud
 import { CLOSE_DELETED, RoomRelay } from './room'
 import { oidcStartUrl, parseAuthFragment, redirectTarget, signInErrorMessage, stashSignIn, takeSignIn, type AuthResult, type OidcProvider } from './auth'
 import { arriveAtCanvas, arriveAtJoin, type Arrival, type ArrivalDeps, type ArrivalError } from './arrive'
-import { focusWhenPresent } from './focus'
+import { OpenFocus, watchTouch } from './focus'
 import { deploymentBrand, type Brand } from './brand'
 
 /** Compact a canvas's log into one snapshot past this many entries or this much base64 (Copper: 500 entries or 2 MB). */
@@ -174,10 +174,8 @@ export class WebHost {
   private snapshotTimer: ReturnType<typeof setInterval> | undefined
   /** A sign-in's answer, read from the fragment at load (and wiped from the address bar). */
   private returned: { result: AuthResult; provider?: string } | null = null
-  private stopFocus: (() => void) | null = null
-  private focusFallback: ReturnType<typeof setTimeout> | undefined
-  /** A deep link's shape not fitted yet: every room sync looks for it again until it is. */
-  private pendingFocus: { canvasId: string; shape: string } | null = null
+  /** The open canvas's first view (the linked shape, else the whole board), until it is shown. */
+  private openFocus: OpenFocus | null = null
   /** The open's load watchdogs (a quiet socket, a load that never finishes). */
   private syncTimers: ReturnType<typeof setTimeout>[] = []
 
@@ -450,7 +448,8 @@ export class WebHost {
     }
     this.openId = id
     this.api.init({ docId: record.cloud?.canvasId ?? id, name: record.name, kind: record.kind, me: this.state.me, state, online, readOnly: false, place: PLACE })
-    if (focus) this.focusOn(id, focus, online)
+    // Every open lands on something: the linked shape, else the whole board.
+    this.focusOn(id, focus ?? null, online && !!this.room)
     this.api.setStatus(record.cloud ? { mode: online ? (record.kind === 'personal' ? 'personal-synced' : 'shared-live') : record.kind === 'shared' ? 'shared-offline' : 'local' } : null)
     this.api.setNav({ home: true })
     this.api.setShare(record.kind === 'personal' && record.cloud ? { canShare: false, reason: 'Personal canvases cannot be shared' } : { canShare: true })
@@ -475,8 +474,7 @@ export class WebHost {
     if (this.openId !== id) return
     this.clearSyncWatch()
     if (this.state.landing?.kind === 'busy') this.set({ landing: null })
-    const pending = this.pendingFocus
-    if (pending && pending.canvasId === id) this.lookFor(id, pending.shape)
+    this.openFocus?.synced()
   }
 
   /** A socket the server hasn't greeted gets dropped once; told it closed, the page reconnects. */
@@ -510,37 +508,21 @@ export class WebHost {
     for (const timer of this.syncTimers.splice(0)) clearTimeout(timer)
   }
 
-  /**
-   * Fit `shape` once the board holds it. Online, wait for the room's sync (a cached copy may hold
-   * it somewhere it no longer is); if the room is slow, look anyway after a while. A sync that
-   * comes later still looks again, until the shape has been fitted once.
-   */
-  private focusOn(canvasId: string, shape: string, online: boolean) {
+  /** Bring the linked shape (or, with none, the whole board) into view once it is there (`focus.ts`). */
+  private focusOn(canvasId: string, shape: string | null, waitForSync: boolean) {
     this.cancelFocus()
-    this.pendingFocus = { canvasId, shape }
-    if (!online || !this.room) {
-      this.lookFor(canvasId, shape)
-      return
-    }
-    this.focusFallback = setTimeout(() => this.lookFor(canvasId, shape), 8000)
-  }
-
-  private lookFor(canvasId: string, shape: string) {
-    clearTimeout(this.focusFallback)
-    this.stopFocus?.()
-    this.stopFocus = focusWhenPresent(this.api, shape, {
-      stillWanted: () => this.openId === canvasId && this.pendingFocus?.shape === shape,
-      onFound: () => {
-        if (this.pendingFocus?.canvasId === canvasId) this.pendingFocus = null
-      },
+    this.openFocus = new OpenFocus(this.api, {
+      shape,
+      waitForSync,
+      stillOpen: () => this.openId === canvasId,
+      // The page's board, not the host's cards over it.
+      watchTouch: touched => watchTouch(document.getElementById('root'), touched),
     })
   }
 
   private cancelFocus() {
-    clearTimeout(this.focusFallback)
-    this.pendingFocus = null
-    this.stopFocus?.()
-    this.stopFocus = null
+    this.openFocus?.cancel()
+    this.openFocus = null
   }
 
   private compactOpen(id: string) {
