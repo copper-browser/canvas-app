@@ -4,7 +4,7 @@
  * the host, and `apply`/`read` answer with a JSON string.
  */
 import { BridgeSocket } from './bridge-socket'
-import { VERSION, controller, type Controller, type ImportResult } from './controller'
+import { VERSION, controller, type Controller, type ImportResult, type ZoomOpts } from './controller'
 import { hostLog } from './host-bridge'
 import { setTheme } from './theme'
 import { chat } from './canvas/chat'
@@ -20,7 +20,11 @@ export interface CopperCanvasApi {
   apply(opsJson: unknown): string
   read(optsJson?: unknown): string
   select(ids: unknown): void
-  /** Bring shapes into view; `{fit: true}` fits and centres them instead of the gentlest reveal. */
+  /**
+   * Bring shapes into view; `{fit: true}` fits and centres them instead of the gentlest reveal.
+   * `{all: true}` fits the whole board (the ids are ignored); `{maxZoom}` caps how far a fit zooms in
+   * (default 1.5; `1` never zooms past 100%).
+   */
   zoomTo(ids: unknown, opts?: unknown): void
   setAgent(agent: unknown): void
   /** `{mode: 'local'|'personal-synced'|'shared-live'|'shared-offline', pending?}`; `null` clears. */
@@ -79,17 +83,23 @@ function idList(raw: unknown): string[] {
   return v.filter((x): x is string => typeof x === 'string' && x.length > 0)
 }
 
-/** `{fit: true}` (or that as JSON) asks a zoom to fit and centre. */
-function zoomFit(raw: unknown): boolean {
+/** `{fit: true, all?: true, maxZoom?}` (or that as JSON): fit and centre, the whole board, no closer than that. */
+export function zoomOptions(raw: unknown): { fit: boolean; opts: ZoomOpts } {
   let v = raw
   if (typeof v === 'string') {
     try {
       v = JSON.parse(v)
     } catch {
-      return false
+      return { fit: false, opts: {} }
     }
   }
-  return !!v && typeof v === 'object' && (v as { fit?: unknown }).fit === true
+  if (!v || typeof v !== 'object') return { fit: false, opts: {} }
+  const o = v as { fit?: unknown; all?: unknown; maxZoom?: unknown }
+  const opts: ZoomOpts = {}
+  if (o.all === true) opts.all = true
+  if (typeof o.maxZoom === 'number' && Number.isFinite(o.maxZoom) && o.maxZoom > 0) opts.maxZoom = o.maxZoom
+  // The whole board is always a fit.
+  return { fit: o.fit === true || opts.all === true, opts }
 }
 
 const guard =
@@ -140,7 +150,14 @@ export function createApi(c: Controller = controller): CopperCanvasApi {
       }
     },
     select: guard('select', (ids: unknown) => c.setSelection(idList(ids), true), undefined),
-    zoomTo: guard('zoomTo', (ids: unknown, opts?: unknown) => void c.zoomTo(idList(ids), zoomFit(opts)), undefined),
+    zoomTo: guard(
+      'zoomTo',
+      (ids: unknown, raw?: unknown) => {
+        const { fit, opts } = zoomOptions(raw)
+        void c.zoomTo(idList(ids), fit, opts)
+      },
+      undefined
+    ),
     setAgent: guard('setAgent', (agent: unknown) => c.setAgent(agent), undefined),
     setStatus: guard('setStatus', (status: unknown) => void c.setHostStatus(status), undefined),
     setShare: guard('setShare', (share: unknown) => void c.setShare(share), undefined),

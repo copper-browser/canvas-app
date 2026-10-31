@@ -66,6 +66,40 @@ describe('window.copperCanvas', () => {
     c.attachBoard(null)
   })
 
+  it('zoomTo fits the whole board, no closer than asked', () => {
+    const calls: unknown[] = []
+    c.attachBoard({ zoomTo: (ids, fit, opts) => (calls.push([ids, fit, opts]), true) })
+    api.zoomTo([], { fit: true, all: true, maxZoom: 1 })
+    api.zoomTo('[]', '{"all":true}')
+    api.zoomTo(['a'], { fit: true, maxZoom: 'near' })
+    api.zoomTo(['a'], { fit: true, maxZoom: -1 })
+    expect(calls).toEqual([
+      [[], true, { all: true, maxZoom: 1 }],
+      [[], true, { all: true }],
+      [['a'], true, {}],
+      [['a'], true, {}],
+    ])
+    c.attachBoard(null)
+  })
+
+  it('a new session drops the old board: its zooms wait for the new one', () => {
+    const old: unknown[] = []
+    const next: unknown[] = []
+    const board = { zoomTo: (ids: string[]) => (old.push(ids), true) }
+    c.attachBoard(board)
+    api.init({ docId: 'x' })
+    api.zoomTo([], { all: true, maxZoom: 1 })
+    expect(old).toEqual([])
+    // The old board's unmount does not drop the new one.
+    const fresh = { zoomTo: (ids: string[], fit?: boolean, opts?: unknown) => (next.push([ids, fit, opts]), true) }
+    c.attachBoard(fresh)
+    c.detachBoard(board)
+    expect(next).toEqual([[[], true, { all: true, maxZoom: 1 }]])
+    expect(c.board).toBe(fresh)
+    c.detachBoard(fresh)
+    expect(c.board).toBeNull()
+  })
+
   it('sets share capability and ignores unknown fields', () => {
     api.setShare({ canShare: true, members: 3, reason: 'unused', ignored: true })
     expect(c.getShare()).toEqual({ canShare: true, members: 3, reason: 'unused' })

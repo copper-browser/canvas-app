@@ -15,6 +15,7 @@ import {
   sidePoint,
   unionBox,
   visibleWorld,
+  wholeBoardView,
   worldToScreen,
   zoomAt,
   zoomTo,
@@ -138,5 +139,29 @@ describe('view math', () => {
 
   it('knows the visible world rectangle', () => {
     expect(visibleWorld({ x: -100, y: -50, z: 2 }, 800, 600)).toEqual({ x: 50, y: 25, w: 400, h: 300 })
+  })
+})
+
+describe('wholeBoardView', () => {
+  it('fits a big board whole, centred, with room around it', () => {
+    // A newspaper page whose frame starts at the origin.
+    const view = wholeBoardView([{ type: 'frame', x: 0, y: 0, w: 2400, h: 3200 }], 1280, 800)
+    expect(view.z).toBeLessThan(1)
+    expect(view.z).toBeCloseTo((800 - 192) / 3200)
+    // Centred: the page's middle is the viewport's middle.
+    expect(1200 * view.z + view.x).toBeCloseTo(640)
+    expect(1600 * view.z + view.y).toBeCloseTo(400)
+    expect(0 * view.z + view.y).toBeGreaterThanOrEqual(96 - 1e-9)
+  })
+
+  it('never zooms in past 100%: a small board stays at its size, centred', () => {
+    const view = wholeBoardView([{ type: 'sticky', x: 100, y: 100, w: 200, h: 100 }], 1280, 800)
+    expect(view).toEqual({ x: 640 - 200, y: 400 - 150, z: 1 })
+    expect(wholeBoardView([{ type: 'sticky', x: 0, y: 0, w: 10, h: 10 }], 1280, 800, 0.5).z).toBe(0.5)
+  })
+
+  it('leaves arrows out, and centres the origin of an empty board', () => {
+    expect(wholeBoardView([{ type: 'arrow', x: -5000, y: -5000, w: 10_000, h: 10_000 }], 800, 600)).toEqual({ x: 400, y: 300, z: 1 })
+    expect(wholeBoardView([], 800, 600)).toEqual({ x: 400, y: 300, z: 1 })
   })
 })

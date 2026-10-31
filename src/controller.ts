@@ -282,10 +282,16 @@ export interface ViewInfo {
 
 type Listener = () => void
 
+/** How a zoom fits: the whole board (`all`, the ids ignored), and no closer than `maxZoom` (default 1.5). */
+export interface ZoomOpts {
+  all?: boolean
+  maxZoom?: number
+}
+
 /** What the board does for the controller (flights need its animation). */
 export interface BoardHandle {
   /** `fit`: fit and centre the shapes (a deep link's focus) rather than the gentlest reveal. */
-  zoomTo(ids: string[], fit?: boolean): boolean
+  zoomTo(ids: string[], fit?: boolean, opts?: ZoomOpts): boolean
 }
 
 export class Controller {
@@ -296,7 +302,7 @@ export class Controller {
   private lastPostedSelection = '[]'
   viewInfo: ViewInfo = { view: { x: 640, y: 400, z: 1 }, width: 1280, height: 800 }
   board: BoardHandle | null = null
-  private pendingZoom: { ids: string[]; fit: boolean } | null = null
+  private pendingZoom: { ids: string[]; fit: boolean; opts: ZoomOpts } | null = null
   private version = 0
   /** What the host last said about the board's connection; outlives `init`. */
   private hostStatus: HostStatus | null = null
@@ -330,6 +336,9 @@ export class Controller {
     performance.mark?.('canvas:init')
     const cfg = parseInit(raw)
     this.session?.destroy()
+    // The board on screen belongs to the session going away: a zoom asked from now on waits for
+    // the new session's board (it attaches once it has a size).
+    this.board = null
     this.selection = []
     this.lastPostedSelection = '[]'
     this.session = new Session(cfg, () => this.emit())
@@ -441,19 +450,24 @@ export class Controller {
   attachBoard(board: BoardHandle | null) {
     this.board = board
     if (board && this.pendingZoom) {
-      const { ids, fit } = this.pendingZoom
+      const { ids, fit, opts } = this.pendingZoom
       this.pendingZoom = null
-      board.zoomTo(ids, fit)
+      board.zoomTo(ids, fit, opts)
     }
   }
 
-  zoomTo(ids: string[], fit = false): boolean {
+  /** A board's unmount: forget it, unless another has taken its place already. */
+  detachBoard(board: BoardHandle) {
+    if (this.board === board) this.board = null
+  }
+
+  zoomTo(ids: string[], fit = false, opts: ZoomOpts = {}): boolean {
     const list = ids.map(bareId)
     if (!this.board) {
-      this.pendingZoom = { ids: list, fit }
+      this.pendingZoom = { ids: list, fit, opts }
       return false
     }
-    return this.board.zoomTo(list, fit)
+    return this.board.zoomTo(list, fit, opts)
   }
 
   // ---- selection ---------------------------------------------------------------
