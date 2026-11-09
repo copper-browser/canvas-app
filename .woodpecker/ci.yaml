@@ -1,0 +1,18 @@
+# Roadrunner CI (Woodpecker + Dagger, https://cicd.apps.exowatt.com): install, typecheck, lint,
+# test, build, and the committed dist/ must equal a fresh build. Docs: https://cicd.docs.exowatt.com/roadrunner/
+labels:
+  tier: "0"
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+  - event: manual
+steps:
+  - name: check
+    image: bash
+    commands:
+      - >-
+        ci-dagger v0.10.1 bun --src=. --repo=canvas-app --bun=1.4.2
+        --npm-registry=https://npm.dev.exowatt.com/ --dep-cache=registry.dev.exowatt.com/cache
+        --dep-cache-password=file:///etc/woodpecker/zot-ci-cache --test-workers=2
+        --run='bun run typecheck && bun run lint && bun run test && cp -r dist /tmp/dist.committed && bun run build && diff -r /tmp/dist.committed dist && echo "committed build matches the source"'
