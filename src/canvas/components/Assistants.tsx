@@ -61,9 +61,17 @@ export function openAssistantChat(assistant: Pick<CanvasAssistant, 'id' | 'chat'
   const h = Math.min(CHAT_H, s.availHeight)
   const left = Math.max(0, (s.availLeft ?? 0) + s.availWidth - CHAT_W)
   const top = Math.max(0, (s.availTop ?? 0) + Math.round((s.availHeight - h) / 2))
-  // `noopener=no`: the handle is how a blocked window is noticed and an open one focused.
-  const win = window.open(url, chatWindowName(assistant.id), `popup=yes,width=${CHAT_W},height=${h},left=${left},top=${top},noopener=no`)
+  // Opened empty: the handle is how a blocked window is noticed and an open one focused.
+  const win = window.open('', chatWindowName(assistant.id), `popup=yes,width=${CHAT_W},height=${h},left=${left},top=${top}`)
   if (!win) return openUrl(url)
+  // Anyone who edits the canvas chooses this URL, so its page gets no handle on this one:
+  // `opener` is cut before it loads.
+  try {
+    win.opener = null
+  } catch {
+    // A chat window kept from before a reload: another site's by now, and cut back then.
+  }
+  win.location.href = url
   chats.set(assistant.id, { win, url })
   win.focus()
 }
