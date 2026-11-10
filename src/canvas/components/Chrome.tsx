@@ -46,6 +46,8 @@ import { COLOR_LABEL, SHAPE_COLORS, initials, swatchOf } from '../colors'
 import type { StatusView } from '../status'
 import { facepilePeople, mergePresence } from '../presence'
 import type { CanvasAgent, NamedColor, Shape, ShapeColor } from '../types'
+import type { CanvasAssistant } from '../assistants'
+import { AssistantChips } from './Assistants'
 import { ChatButton } from '../chat/ChatButton'
 import { chat } from '../chat'
 import type { PeerView } from './Overlays'
@@ -427,11 +429,16 @@ export function TitleBar({
   status,
   readOnly,
   onHome,
+  assistants,
+  onOpenUrl,
 }: {
   name: string
   kind: string
   status: StatusView
   readOnly: boolean
+  /** The assistants this canvas features: a chat chip each, after the title pill. */
+  assistants: readonly CanvasAssistant[]
+  onOpenUrl: (url: string) => void
   /** The host's list of canvases (`copperCanvas.setNav`); no button without it. */
   onHome?: () => void
 }) {
@@ -439,7 +446,13 @@ export function TitleBar({
   const dot = TONE_DOT[s.tone]
   const warn = s.tone === 'warning' && !s.pulse
   return (
-    <div className="pointer-events-none absolute left-3 right-[120px] top-3 flex min-w-0 items-center gap-2">
+    <div
+      className={cn(
+        'pointer-events-none absolute left-3 right-[120px] top-3 flex min-w-0 items-center gap-2',
+        // With chips beside it, the title stops short of the fullest top-right panel (376 px: four faces, Share, four buttons).
+        assistants.length > 0 && 'min-[1152px]:right-[396px]'
+      )}
+    >
       {onHome && (
         <Panel className="pointer-events-auto flex shrink-0 p-1">
           <button
@@ -491,6 +504,7 @@ export function TitleBar({
           </span>
         </span>
       </Panel>
+      <AssistantChips assistants={assistants} onOpenUrl={onOpenUrl} />
     </div>
   )
 }

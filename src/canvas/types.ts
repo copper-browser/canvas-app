@@ -7,6 +7,8 @@
  *   property is last-writer-wins on its own. Sticky and text bodies are a
  *   `Y.Text` (concurrent typing merges); a plain string is read too.
  * - `agents: Y.Map<agentId, AgentPresence>` — plain objects, replaced whole.
+ * - `assistants: Y.Map<id, {name, chat, avatar?, about?, addedAt}>` — agents people can chat
+ *   with (`assistants.ts`); plain objects, replaced whole, kept until removed.
  * - `meta: Y.Map` — `name`, `createdBy`.
  * - `comments: Y.Map<threadId, Y.Map>` — comment threads anchored to shapes
  *   (`comments.ts`); kept apart from `shapes` and out of undo.

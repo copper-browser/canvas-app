@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { fromBase64, toBase64 } from '../../canvas/base64'
-import { COMPACT_AFTER, COMPACT_AFTER_CHARS, EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, routeHash, sameRoute, shouldCompact } from '../host'
+import { COMPACT_AFTER, COMPACT_AFTER_CHARS, EXPORT_FORMAT, mergeLog, parseCanvasFile, parseRoute, renamedOnServer, routeHash, sameRoute, shouldCompact } from '../host'
 import { ago } from '../Home'
 
 describe('routes', () => {
@@ -84,5 +84,23 @@ describe('shouldCompact', () => {
     expect(shouldCompact({ count: COMPACT_AFTER + 1, chars: 10 })).toBe(true)
     expect(shouldCompact({ count: 2, chars: COMPACT_AFTER_CHARS + 1 })).toBe(true)
     expect(shouldCompact({ count: 1, chars: COMPACT_AFTER_CHARS * 4 })).toBe(false)
+  })
+})
+
+describe('renamedOnServer', () => {
+  it('lists server canvases whose local record has an older name, and only linked ones', () => {
+    const cloud = { server: 'https://canvas.example.com', canvasId: 'a' }
+    const records: Parameters<typeof renamedOnServer>[0] = [
+      { id: 'a', name: 'Old', kind: 'shared', createdAt: 0, updatedAt: 0, cloud },
+      { id: 'b', name: 'Same', kind: 'shared', createdAt: 0, updatedAt: 0, cloud: { ...cloud, canvasId: 'b' } },
+      { id: 'c', name: 'Local only', kind: 'personal', createdAt: 0, updatedAt: 0 },
+    ]
+    const list = [
+      { id: 'a', name: 'New', kind: 'shared' },
+      { id: 'b', name: 'Same', kind: 'shared' },
+      { id: 'c', name: 'Other', kind: 'shared' },
+      { id: 'd', name: 'Never opened', kind: 'shared' },
+    ]
+    expect(renamedOnServer(records, list).map(c => c.id)).toEqual(['a'])
   })
 })

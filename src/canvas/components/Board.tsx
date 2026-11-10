@@ -75,6 +75,7 @@ import {
   type Tool,
   type Toast,
 } from './Chrome'
+import { useAssistants } from './Assistants'
 import { BoardContext, ViewMotion, ZoomVars, type BoardActions, type EditField, type FrameHandle } from './context'
 import {
   AgentCursors,
@@ -188,6 +189,7 @@ export function Board({ session }: { session: Session }) {
   )
   const peers = usePeers(awareness)
   const agents = useLiveAgents(store.agents)
+  const assistants = useAssistants(store.assistants)
   /** Laser strokes, ours and everyone else's (from awareness); never in the doc. */
   const trails = useMemo(() => new LaserTrails(), [])
   useRemoteLasers(awareness, trails)
@@ -2146,6 +2148,8 @@ export function Board({ session }: { session: Session }) {
           status={status}
           readOnly={readOnly}
           onHome={nav?.home ? () => postToHost({ type: 'home' }) : undefined}
+          assistants={assistants}
+          onOpenUrl={openUrl}
         />
         <TopRight
           onSearch={() => (search.open ? search.close() : search.show())}
