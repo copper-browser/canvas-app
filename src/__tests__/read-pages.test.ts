@@ -71,7 +71,7 @@ describe('a board that fits in one answer', () => {
       { op: 'comment', on: 's', text: 'q' },
     ])
     const r = read()
-    expect(Object.keys(r).sort()).toEqual(['agents', 'canvas', 'comments', 'count', 'returned', 'selection', 'shapes', 'total', 'viewport'])
+    expect(Object.keys(r).sort()).toEqual(['agents', 'assistants', 'canvas', 'comments', 'count', 'returned', 'selection', 'shapes', 'total', 'viewport'])
     expect(r.total).toBe(2)
     expect(r.returned).toBe(2)
     expect(r.next).toBeUndefined()

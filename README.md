@@ -167,15 +167,18 @@ copperCanvas.apply(JSON.stringify({
     { op: "connect", from: "n1", to: "n2", label: "then", fromSide: "right", toSide: "left" },
     { op: "delete", id: "n2" },
     { op: "clear" },
+    { op: "assistant", id: "bot:helper", name: "Helper", chat: "https://example.com/chat/helper",
+      avatar: "https://example.com/helper.png", about: "Ask me about this board" },   // see Assistants
   ],
 }))
-// → '{"applied":8,"ids":["n1","…","…","…","n1","n1","n1",null,null,null],
+// → '{"applied":9,"ids":["n1","…","…","…","n1","n1","n1",null,null,null,"bot:helper"],
 //     "errors":[{"index":7,"op":"connect","error":"`to`: no shape n2"},{"index":8,"op":"delete","error":"no shape n2"}]}'
 
 copperCanvas.read('{"full":false, "ids":["n1"], "types":["sticky"], "inView":true}')  // all optional
 // → '{"canvas":{"id","name","kind"},"viewport":{"x","y","w","h","zoom"},
 //     "shapes":[{"id","type","x","y","w","h","color","z","by","text"|"title"|"label"|"url",…}],
-//     "agents":[{"id","name","color","cursor","status","updatedAt"}],"selection":["n1"],"count":12}'
+//     "agents":[{"id","name","color","cursor","status","updatedAt"}],
+//     "assistants":[{"id","name","chat","avatar"?,"about"?}],"selection":["n1"],"count":12}'
 
 copperCanvas.select(["n1", "n2"])           // also '["n1"]' or "n1"; not reported back as a selection message
 copperCanvas.zoomTo(["n1"])                 // animated flight to the shapes' bounds
@@ -275,6 +278,37 @@ hidden until called, disabled (with `reason` as its tooltip) when `canShare` is 
 excluding this page, with each person's world-space cursor (or `null`). Human names and colours come
 from `init.me`, which is also published in awareness.
 
+### Assistants
+
+A canvas can feature **assistants**: agents people can chat with (a bot that keeps the board up to
+date, say). Each is one entry of the document's `assistants` map (see
+[Document schema](#document-schema)) and stays until it is removed; it is not the live `agents`
+presence, and not the canvas's own chat between people (`src/canvas/chat/`).
+
+While a canvas has any, the top bar shows a chip for each beside the title pill (on a row of its
+own under it in windows narrower than 1152 px): its picture (its initials when it has none or the
+image fails to load), its name and a **Chat** button; at 640 px and narrower just the picture and
+the chat icon. Two chips are shown; the rest fold into a `+N` menu. Clicking a chip opens the
+assistant's `chat` URL in a small window of its own (420 × 720 at the right edge of the screen,
+named per assistant, so clicking again brings the same window back). Where a host owns URL opening
+(the embedded page), or the browser blocks the window, it goes the way a link card does:
+`{"type":"openUrl","url"}` to the host, or a new tab. The page never frames the chat, and only ever
+opens http(s) URLs (`src/canvas/assistants.ts`, `src/canvas/components/Assistants.tsx`).
+
+Writers feature one with an op, through `copperCanvas.apply` here or a sync server's ops endpoint:
+
+```js
+{ op: "assistant", id: "bot:helper", name: "Helper", chat: "https://example.com/chat/helper",
+  avatar: "https://example.com/helper.png", about: "Ask me about this board" }   // add or replace
+{ op: "assistant", id: "bot:helper", remove: true }                              // remove
+```
+
+`id` is 1–64 of `A–Z a–z 0–9 _ - : .`; `name` 1–60 characters; `chat` an http(s) URL (≤ 2048);
+`avatar` (optional) an http(s) URL of a square image; `about` (optional) one line of ≤ 140
+characters, shown in the chip's tooltip. Replacing an id keeps its place in the order; a canvas
+holds at most 8 (a ninth new id is an error); removing one that is not there succeeds. `ids[i]` is
+the assistant's id. `read` lists them as `assistants`, oldest first.
+
 ### Ops semantics
 
 - One transaction per call, ops in order; a bad op is skipped and reported, the rest apply.
@@ -286,7 +320,8 @@ from `init.me`, which is also published in awareness.
 - Arrow ends: a shape id (`"n1"` or `"shape:n1"`), `{ref, side?}` with side `top|right|bottom|left`,
   or a free point `{x, y}`. Arrows have no box of their own.
 - `move` on a frame carries the shapes lying wholly inside it; on an arrow it moves free ends.
-- `delete` also deletes the arrows that end on the shape. `clear` keeps `meta` and `agents`.
+- `delete` also deletes the arrows that end on the shape. `clear` keeps `meta`, `agents` and
+  `assistants`.
 - Images: `src` is a `data:image/…` URL (≤ 2 MB) or an `https:` URL. Link `url`: http(s), mailto,
   copper. `color`: yellow, pink, blue, green, purple, gray, white or `#hex`.
 - A call with `as` marks that agent `writing` (cursor at the last thing it touched), then `idle`
@@ -314,7 +349,7 @@ from `init.me`, which is also published in awareness.
 | `{"type":"presence","people":[{"id","name","color","kind"}]}` | everyone else in the room, diffed and debounced (≤500 ms) |
 | `{"type":"ws","b64"}` | a frame for the relayed socket |
 | `{"type":"wsOpen","url"}` / `{"type":"wsClose"}` | open / close the relayed socket |
-| `{"type":"openUrl","url"}` | a link card was opened or a link in a note clicked (the page never navigates) |
+| `{"type":"openUrl","url"}` | a link card was opened, a link in a note clicked, or an assistant's chat asked for (the page never navigates) |
 | `{"type":"log","level","msg"}` | diagnostics |
 | `{"type":"framePoster","name","id","url","rect":{x,y,w,h},"maxWidth"}` | a live frame's site could be pictured now (its iframe's content box, CSS px of the page's viewport, fully on screen, nothing but arrows drawn over it); answer with `copperCanvas.framePoster(name, dataUrl)` or don't |
 
@@ -335,6 +370,12 @@ One Y.Doc per canvas (see `src/canvas/types.ts`):
   written the entry since), on `pagehide`, on `destroy` and when the sync socket drops; readers
   hide any entry older than two seconds too, so a peer that vanished leaves no ghost
   (`src/canvas/agents.ts`, `Session` in `src/controller.ts`).
+- `assistants: Y.Map<id, {name, chat, avatar?, about?, addedAt}>` — whole values: the agents the
+  canvas features with a chat chip (see [Assistants](#assistants)). `id` is 1–64 of
+  `A–Z a–z 0–9 _ - : .`; `chat` and `avatar` are http(s) URLs; `addedAt` is epoch ms, set by the
+  writer and kept when an entry is replaced. At most 8. Readers are tolerant: an entry without a
+  name or an http(s) `chat` is skipped, a non-http(s) `avatar` dropped, order is `addedAt` then id.
+  Never undone, and kept by `clear`.
 - `meta: Y.Map` — `name`, `createdBy` (written once by the page that made the canvas).
 - Awareness (human cursors): `{user:{id,name,color}, name, color, cursor:{x,y}|null, selection:[ids],
   laser: LaserWire|null}`. `laser` is the stroke someone is drawing with the laser pointer (**K**):

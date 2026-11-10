@@ -196,6 +196,8 @@ export class CanvasStore {
   readonly doc: Y.Doc
   readonly shapes: Y.Map<Y.Map<unknown>>
   readonly agents: Y.Map<unknown>
+  /** Agents people can chat with (`assistants.ts`): kept until removed, never undone. */
+  readonly assistants: Y.Map<unknown>
   readonly meta: Y.Map<unknown>
   /** Comment threads on shapes: their own top-level map, outside the undo manager's scope. */
   readonly comments: CommentStore
@@ -208,6 +210,7 @@ export class CanvasStore {
     this.doc = doc
     this.shapes = doc.getMap<Y.Map<unknown>>('shapes')
     this.agents = doc.getMap<unknown>('agents')
+    this.assistants = doc.getMap<unknown>('assistants')
     this.meta = doc.getMap<unknown>('meta')
     this.comments = new CommentStore(doc)
     // `shapes` only: ⌘Z never takes back a comment (nor a comment a shape edit).

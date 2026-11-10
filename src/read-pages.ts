@@ -72,6 +72,7 @@ export interface CanvasOverview {
   moreFrames?: number
   comments: { threads: number; open: number }
   agents: CanvasRead['agents']
+  assistants: CanvasRead['assistants']
   selection: string[]
   count: number
   note: string
@@ -320,6 +321,7 @@ export function readScope(ctx: ReadContext, rawOpts: unknown, parsed: ReadOption
         frames: list,
         comments: { threads: read.comments.length, open: read.comments.filter(c => !c.resolved).length },
         agents: read.agents,
+        assistants: read.assistants,
         selection: read.selection,
         count: read.count,
         note: `Overview only: ${total} shape${total === 1 ? '' : 's'}${narrowed ? ' match' : ''}. Read a slide with frame:<id>, an area with region, or everything a page at a time (limit, then next as cursor).`,

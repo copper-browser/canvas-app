@@ -44,6 +44,10 @@
  *   {op:"comment", on:shapeId, text, id?}                    // a new thread on a shape; ids[i] is the thread's id
  *   {op:"reply", thread, text}                               // add onto a thread (a resolved one opens again)
  *   {op:"resolve", thread, resolved?:true|false}             // resolve (default) or reopen
+ *
+ * Assistants (`canvas/assistants.ts`): agents the canvas features with a chat button.
+ *   {op:"assistant", id, name, chat, avatar?, about?}        // add or replace (keeps its `addedAt`); ≤ 8 per canvas
+ *   {op:"assistant", id, remove:true}                        // remove; fine when it is not there
  */
 import { arrowBox, arrowPath } from './canvas/arrows'
 import { AGENT, bareId, readEndpoint, type CanvasStore, type ShapeInput, type ShapeProps } from './canvas/doc'
@@ -94,6 +98,7 @@ import {
   writeTitle,
 } from './canvas/checklist-text'
 import { liveAgents, readAgents } from './canvas/agents'
+import { readAssistants, removeAssistant, writeAssistant, type CanvasAssistant } from './canvas/assistants'
 import { cleanCommentText, isShown, shapeLabel, type CommentAuthor } from './canvas/comments'
 import { center, containsBox, boxesOverlap, SIDES, type Box, type Point, type Side } from './canvas/geometry'
 import { MIN_SIZE, isResizable, minSizeOf } from './canvas/resize'
@@ -1133,6 +1138,15 @@ function opResolve(op: Record<string, unknown>, ctx: OpsContext, as: Actor | nul
   return t.id
 }
 
+function opAssistant(op: Record<string, unknown>, ctx: OpsContext): string {
+  const id = op.id
+  if (typeof id !== 'string' || !ID.test(id)) return fail('`id` must be 1–64 of A–Z a–z 0–9 _ - : .')
+  if (op.remove !== undefined && typeof op.remove !== 'boolean') fail('`remove` must be true or false')
+  if (op.remove === true) removeAssistant(ctx.store.assistants, id)
+  else checked(() => writeAssistant(ctx.store.assistants, id, op))
+  return id
+}
+
 export interface ApplyOutcome extends ApplyResult {
   /** Where the agent's cursor should rest: the last thing it touched. */
   anchor: Point | null
@@ -1215,8 +1229,11 @@ export function applyOps(ctx: OpsContext, raw: unknown): ApplyOutcome {
             if (anchor && ctx.store.live(anchor)) result.anchor = anchorOf(ctx, anchor)
             break
           }
+          case 'assistant':
+            id = opAssistant(o, ctx)
+            break
           default:
-            fail(`unknown op ${JSON.stringify(o.op ?? null)} (add, update, move, resize, delete, connect, clear, comment, reply, resolve)`)
+            fail(`unknown op ${JSON.stringify(o.op ?? null)} (add, update, move, resize, delete, connect, clear, comment, reply, resolve, assistant)`)
         }
         result.ids.push(id)
         result.applied++
@@ -1244,7 +1261,7 @@ function keepPlacing(store: CanvasStore, op: unknown, done: boolean, id?: string
   if (!placing?.boxes) return
   const kind = opName(op)
   if (!done) {
-    if (kind !== 'add' && kind !== 'connect' && kind !== 'comment' && kind !== 'reply' && kind !== 'resolve') {
+    if (kind !== 'add' && kind !== 'connect' && kind !== 'comment' && kind !== 'reply' && kind !== 'resolve' && kind !== 'assistant') {
       placing.boxes = null
       placing.hints.clear()
     }
@@ -1358,6 +1375,8 @@ export interface CanvasRead {
   /** Comment threads, oldest first; with `ids`/`types`/`inView`, only those on the shapes returned. */
   comments: CommentSummary[]
   agents: (Omit<CanvasAgent, 'cursor'> & { cursor: Point | null })[]
+  /** Agents people can chat with (`canvas/assistants.ts`), oldest first. */
+  assistants: Omit<CanvasAssistant, 'addedAt'>[]
   selection: string[]
   count: number
 }
@@ -1523,6 +1542,7 @@ function readShapes(ctx: ReadContext, rawOpts: unknown, overview: boolean): Canv
     shapes: out,
     comments,
     agents: liveAgents(readAgents(ctx.store.agents), now),
+    assistants: readAssistants(ctx.store.assistants).map(({ addedAt: _, ...a }) => a),
     selection: [...ctx.selection],
     count: all.length,
   }
