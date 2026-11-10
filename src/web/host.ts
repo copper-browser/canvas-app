@@ -112,6 +112,11 @@ export const routeHash = (route: Route) =>
   route.view === 'canvas' ? `#/c/${route.id}${route.focus ? `?focus=${encodeURIComponent(route.focus)}` : ''}` : route.view === 'join' ? `#/join/${route.token}` : '#/'
 
 /** Two routes to the same place (a focus is part of it). */
+/** The server canvases whose local record still carries an older name. */
+export function renamedOnServer<C extends { id: string; name: string }>(records: readonly CanvasRecord[], list: readonly C[]): C[] {
+  return list.filter(c => records.some(r => r.id === c.id && !!r.cloud && r.name !== c.name))
+}
+
 export const sameRoute = (a: Route, b: Route) => routeHash(a) === routeHash(b)
 
 const CLOUD_KEY = 'canvas-app:cloud'
@@ -603,7 +608,9 @@ export class WebHost {
     if (!client) return
     this.set({ cloudBusy: true })
     try {
-      this.set({ cloudCanvases: await client.canvases(), cloudBusy: false })
+      const list = await client.canvases()
+      this.set({ cloudCanvases: list, cloudBusy: false })
+      await this.followRenames(list)
     } catch (error) {
       this.set({ cloudBusy: false, cloudCanvases: null })
       if ((error as { status?: number }).status === 401) {
@@ -611,6 +618,16 @@ export class WebHost {
         await this.disconnect()
       } else this.fail(message(error))
     }
+  }
+
+  /** A canvas renamed on its server: its local record follows, and the canvas if it is open. */
+  private async followRenames(list: CloudCanvas[]) {
+    const renamed = renamedOnServer(await this.db.list(), list)
+    if (!renamed.length) return
+    for (const c of renamed) await this.db.patch(c.id, { name: c.name })
+    await this.refresh()
+    // The page takes its name when it opens, so the open canvas opens again.
+    if (this.openId && renamed.some(c => c.id === this.openId)) await this.open(this.openId)
   }
 
   /** Invites waiting for you; a failure only hides the list. */
