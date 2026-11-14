@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { applyOps } from '../../ops'
 import { MAX_NOTE, setRowLabel, setRowNote, setTitle } from '../checklist'
+import { assigneeName, MAX_ASSIGNEE_NAME } from '../checklist-text'
 import { CanvasStore, HOST } from '../doc'
 import { clipText, shiftCaret, textSplice } from '../text-diff'
 
@@ -119,6 +120,10 @@ describe('length caps on text kept in the canvas', () => {
     expect(clipText('a😀b', 2)).toBe('a')
     expect(clipText('a😀b', 3)).toBe('a😀')
     expect(clipText('abc', 0)).toBe('')
+  })
+
+  it('an assignee name cut at an emoji keeps no half of it', () => {
+    expect(assigneeName(`${'a'.repeat(MAX_ASSIGNEE_NAME - 1)}😀`)).toBe('a'.repeat(MAX_ASSIGNEE_NAME - 1))
   })
 
   it('a comment, a title and an agent-written title cut at an emoji reach a peer with no U+FFFD', () => {

@@ -189,7 +189,7 @@ export function readAssignee(v: unknown): ChecklistAssignee | null {
   if (!name) return null
   const out: ChecklistAssignee = { name }
   if (typeof o.id === 'string' && o.id.trim()) out.id = o.id.trim().toLowerCase().slice(0, 80)
-  if (typeof o.email === 'string' && o.email.includes('@')) out.email = o.email.trim().slice(0, 200)
+  if (typeof o.email === 'string' && o.email.includes('@')) out.email = clipText(o.email.trim(), 200)
   if (typeof o.by === 'string' && o.by) out.by = o.by
   if (typeof o.byId === 'string' && o.byId) out.byId = o.byId
   if (finite(o.at) && o.at > 0) out.at = o.at

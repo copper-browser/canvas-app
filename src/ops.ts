@@ -718,7 +718,7 @@ function cleanTimeline(raw: Record<string, unknown>, store: CanvasStore, selfId?
   }
   if (raw.title !== undefined) {
     if (typeof raw.title !== 'string') fail('`title` must be a string')
-    e.title = (raw.title as string).slice(0, MAX_TITLE)
+    e.title = clipText(raw.title as string, MAX_TITLE)
   }
   if (raw.start !== undefined) e.start = cleanDate(raw.start, 'start')
   if (raw.end !== undefined) e.end = cleanDate(raw.end, 'end')

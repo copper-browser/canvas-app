@@ -25,6 +25,7 @@
  * back to the shape if an undo brings the shape back (same id).
  */
 import * as Y from 'yjs'
+import { clipText } from './text-diff'
 import type { Shape } from './types'
 
 export const COMMENTS_KEY = 'comments'
@@ -292,7 +293,7 @@ export class CommentStore {
       const t = new Y.Map<unknown>()
       t.set('id', threadId)
       t.set('anchor', anchor)
-      t.set('anchorName', anchorName.slice(0, 200))
+      t.set('anchorName', clipText(anchorName, 200))
       t.set('by', by.name)
       t.set('byId', by.id)
       t.set('at', now)
@@ -337,7 +338,7 @@ export class CommentStore {
         messages = arr
       }
       ;(messages as Y.Array<unknown>).push([messageMap(id, text, by, now)])
-      if (anchorName) t.set('anchorName', anchorName.slice(0, 200))
+      if (anchorName) t.set('anchorName', clipText(anchorName, 200))
       if (reopen && t.get('resolved') === true) this.writeResolved(t, false, by, now)
     }, origin)
     return id

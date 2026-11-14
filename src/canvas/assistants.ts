@@ -5,6 +5,7 @@
  * lease. The chrome shows each one as a chip that opens its `chat` URL.
  */
 import * as Y from 'yjs'
+import { clipText } from './text-diff'
 
 export interface CanvasAssistant {
   id: string
@@ -47,13 +48,13 @@ export function httpUrl(v: unknown): string | null {
 export function readAssistant(id: string, value: unknown): CanvasAssistant | null {
   const v = plain(value)
   if (!v) return null
-  const name = oneLine(v.name).slice(0, MAX_NAME)
+  const name = clipText(oneLine(v.name), MAX_NAME)
   const chat = httpUrl(v.chat)
   if (!name || !chat) return null
   const out: CanvasAssistant = { id, name, chat, addedAt: typeof v.addedAt === 'number' && Number.isFinite(v.addedAt) ? v.addedAt : 0 }
   const avatar = httpUrl(v.avatar)
   if (avatar) out.avatar = avatar
-  const about = oneLine(v.about).slice(0, MAX_ABOUT)
+  const about = clipText(oneLine(v.about), MAX_ABOUT)
   if (about) out.about = about
   return out
 }
