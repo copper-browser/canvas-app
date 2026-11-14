@@ -69,6 +69,33 @@ describe('text edits next to emoji and other surrogate pairs', () => {
     expect(Object.values(seen).some(s => s.includes(FFFD))).toBe(false)
   })
 
+  /** A checklist note whose title, one row and its comment all read `before`, edited by a second replica. */
+  function checklistAtPeer(before: string, write: (b: CanvasStore, id: string) => void) {
+    const a = new CanvasStore(new Y.Doc())
+    const id = a.create({ type: 'sticky', id: 'n', view: 'checklist', text: `### ${before}\n- [ ] ${before}\n  > ${before}` })
+    const b = new CanvasStore(new Y.Doc())
+    Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc), HOST)
+    const sv = Y.encodeStateVector(b.doc)
+    write(b, id)
+    Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc, sv), HOST)
+    return [b.get(id)!.text, a.get(id)!.text]
+  }
+
+  it.each(ROWS)('%s, in a checklist row label: both replicas read it', (_, before, after) => {
+    const want = `### ${before}\n- [ ] ${after}\n  > ${before}`
+    expect(checklistAtPeer(before, (b, id) => setRowLabel(b, id, 't0', after))).toEqual([want, want])
+  })
+
+  it.each(ROWS)('%s, in a checklist title: both replicas read it', (_, before, after) => {
+    const want = `### ${after}\n- [ ] ${before}\n  > ${before}`
+    expect(checklistAtPeer(before, (b, id) => setTitle(b, id, after))).toEqual([want, want])
+  })
+
+  it.each(ROWS)('%s, in a checklist row comment: both replicas read it', (_, before, after) => {
+    const want = `### ${before}\n- [ ] ${before}\n  > ${after}`
+    expect(checklistAtPeer(before, (b, id) => setRowNote(b, id, 't0', after, { name: 'Ann', id: 'u-ann' }))).toEqual([want, want])
+  })
+
   it('renames a checklist row and its title, and writes a comment, next to emoji', () => {
     const a = new CanvasStore(new Y.Doc())
     const id = a.create({ type: 'sticky', id: 'n', view: 'checklist', text: '### 🎉 Party 😀\n- [ ] 😀 cake\n  > bring 😁' })
