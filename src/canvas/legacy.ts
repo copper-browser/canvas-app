@@ -21,6 +21,7 @@ import { fromBase64 } from './base64'
 import type { ShapeInput } from './doc'
 import { boxesOverlap, unionBox, type Box } from './geometry'
 import { MIN_SIZE } from './resize'
+import { clipText } from './text-diff'
 import { SHAPE_COLORS, isNamedColor, type NamedColor, type ShapeColor } from './types'
 
 export const LEGACY_TYPES = ['sticky', 'frame', 'arrow'] as const
@@ -95,7 +96,7 @@ export function parseLegacyPayload(raw: unknown): LegacyPayload {
   const files: Record<string, string> = {}
   if (isObject(v.files)) for (const [k, f] of Object.entries(v.files)) if (typeof f === 'string' && f) files[k] = f
   const out: LegacyPayload = { doc, files }
-  if (typeof v.title === 'string' && v.title.trim()) out.title = v.title.trim().slice(0, 200)
+  if (typeof v.title === 'string' && v.title.trim()) out.title = clipText(v.title.trim(), 200)
   return out
 }
 

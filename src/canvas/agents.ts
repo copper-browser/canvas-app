@@ -6,6 +6,7 @@
  */
 import * as Y from 'yjs'
 import type { Point } from './geometry'
+import { clipText } from './text-diff'
 import { AGENT_STATUSES, type AgentPresence, type AgentStatus, type CanvasAgent } from './types'
 
 /** How long an entry counts as present after its last write. */
@@ -86,7 +87,7 @@ export function writeAgent(map: Y.Map<unknown>, id: string, patch: AgentPatch, n
         ? { x: Math.round(patch.cursor.x), y: Math.round(patch.cursor.y) }
         : null
   const next: AgentPresence = {
-    name: (patch.name?.trim() || prev?.name || 'Agent').slice(0, 60),
+    name: clipText(patch.name?.trim() || prev?.name || 'Agent', 60),
     color: (patch.color || prev?.color || '').slice(0, 32),
     cursor,
     status: patch.status && isStatus(patch.status) ? patch.status : (prev?.status ?? 'idle'),

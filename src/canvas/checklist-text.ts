@@ -48,7 +48,7 @@
  * stick; a name written twice is one assignee.
  */
 import * as Y from 'yjs'
-import { textSplice } from './text-diff'
+import { clipText, textSplice } from './text-diff'
 
 export const VIEW_CHECKLIST = 'checklist'
 export const WHO_PREFIX = 'who:'
@@ -94,12 +94,13 @@ export function noteBlock(note: string): string {
 
 /** A name as an assignee line keeps it: one line, single spaces, no leading @, at most 80 characters ('' for none). */
 export const assigneeName = (s: string) =>
-  oneLine(s)
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^@+\s*/, '')
-    .slice(0, MAX_ASSIGNEE_NAME)
-    .trim()
+  clipText(
+    oneLine(s)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^@+\s*/, ''),
+    MAX_ASSIGNEE_NAME
+  ).trim()
 
 /** Names as a row keeps them: cleaned, none empty, each person once (any case). */
 export function assigneeNames(names: readonly string[]): string[] {
