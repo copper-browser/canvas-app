@@ -11,6 +11,7 @@
  * it is signed in as.
  */
 import { boxesOverlap, type Box } from './geometry'
+import { clipText } from './text-diff'
 export { LIVE_MIN } from './resize'
 
 /** Default size of a new live frame (world px): a laptop-ish page. */
@@ -364,7 +365,7 @@ export function parseFrameEvent(raw: unknown): FrameEvent | null {
   if (!url) return null
   if (o.kind === 'blank') return { name, kind: 'blank', url }
   if (o.kind !== 'nav') return null
-  const title = typeof o.title === 'string' ? o.title.trim().slice(0, 500) : ''
+  const title = typeof o.title === 'string' ? clipText(o.title.trim(), 500) : ''
   const icon = typeof o.icon === 'string' && /^https:\/\/\S+$/i.test(o.icon) && o.icon.length <= 2048 ? o.icon : undefined
   return icon ? { name, kind: 'nav', url, title, icon } : { name, kind: 'nav', url, title }
 }

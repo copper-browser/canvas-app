@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { setRowLabel, setRowNote, setTitle } from '../checklist'
+import { applyOps } from '../../ops'
+import { MAX_NOTE, setRowLabel, setRowNote, setTitle } from '../checklist'
 import { CanvasStore, HOST } from '../doc'
-import { shiftCaret, textSplice } from '../text-diff'
+import { clipText, shiftCaret, textSplice } from '../text-diff'
 
 const FFFD = '\uFFFD'
 const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff
@@ -81,6 +82,34 @@ describe('text edits next to emoji and other surrogate pairs', () => {
     const want = '### 🎊 Party 😁\n- [ ] 😁 cake\n  > bring 😀'
     expect(b.get(id)!.text).toBe(want)
     expect(a.get(id)!.text).toBe(want)
+  })
+})
+
+describe('length caps on text kept in the canvas', () => {
+  it('clipText never keeps half a pair', () => {
+    expect(clipText('ab😀', 3)).toBe('ab')
+    expect(clipText('ab😀', 4)).toBe('ab😀')
+    expect(clipText('a😀b', 2)).toBe('a')
+    expect(clipText('a😀b', 3)).toBe('a😀')
+    expect(clipText('abc', 0)).toBe('')
+  })
+
+  it('a comment, a title and an agent-written title cut at an emoji reach a peer with no U+FFFD', () => {
+    const a = new CanvasStore(new Y.Doc())
+    const id = a.create({ type: 'sticky', id: 'n', view: 'checklist', text: '### T\n- [ ] row' })
+    const b = new CanvasStore(new Y.Doc())
+    Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc), HOST)
+    const sv = Y.encodeStateVector(b.doc)
+    setRowNote(b, id, 't0', `${'c'.repeat(MAX_NOTE - 1)}😀 and more`, { name: 'Ann', id: 'u-ann' })
+    setTitle(b, id, `${'t'.repeat(499)}😀`)
+    const r = applyOps({ store: b, viewportCenter: () => ({ x: 0, y: 0 }) }, { ops: [{ op: 'add', shape: { type: 'frame', id: 'f', title: `${'f'.repeat(499)}😀` } }] })
+    expect(r.errors).toEqual([])
+    Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc, sv), HOST)
+    for (const s of [a, b]) {
+      const note = s.get(id)!
+      expect(note.text).toBe(`### ${'t'.repeat(499)}\n- [ ] row\n  > ${'c'.repeat(MAX_NOTE - 1)}`)
+      expect(s.get('f')!.title).toBe('f'.repeat(499))
+    }
   })
 })
 

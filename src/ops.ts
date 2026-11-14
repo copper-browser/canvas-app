@@ -121,6 +121,7 @@ import { LIVE_SIZE, frameUrl } from './canvas/frames'
 import { frameSizeFor, imageSizeFor, MAX_DATA_URL } from './canvas/images'
 import { findFreeSpot, occupied, type SearchHint } from './placement'
 import { readScope, typeMatches, type CanvasOverview, type FrameListing } from './read-pages'
+import { clipText } from './canvas/text-diff'
 import {
   SHAPE_SIZE,
   isRefEndpoint,
@@ -207,9 +208,9 @@ export function parseApplyInput(raw: unknown): ParsedInput {
   if (obj.as !== undefined && obj.as !== null) {
     if (typeof obj.as === 'string') as = { id: `agent:${obj.as}`, name: obj.as }
     else if (isObject(obj.as)) {
-      const name = typeof obj.as.name === 'string' && obj.as.name.trim() ? obj.as.name.trim().slice(0, 60) : 'Agent'
+      const name = typeof obj.as.name === 'string' && obj.as.name.trim() ? clipText(obj.as.name.trim(), 60) : 'Agent'
       const id =
-        typeof obj.as.id === 'string' && obj.as.id.trim() ? obj.as.id.trim().slice(0, 64) : `agent:${name.toLowerCase()}`
+        typeof obj.as.id === 'string' && obj.as.id.trim() ? clipText(obj.as.id.trim(), 64) : `agent:${name.toLowerCase()}`
       as = { id, name }
       if (typeof obj.as.color === 'string' && obj.as.color) as.color = obj.as.color.slice(0, 32)
     } else fail('`as` must be {id,name,color}')
@@ -321,7 +322,7 @@ function cleanProps(type: ShapeType, raw: Record<string, unknown>, store: Canvas
       case 'title':
       case 'label':
         if (typeof value !== 'string') fail(`\`${key}\` must be a string`)
-        out[key] = (value as string).slice(0, MAX_TITLE)
+        out[key] = clipText(value as string, MAX_TITLE)
         break
       case 'fontSize':
         if (!finite(value) || value < 6 || value > 240) fail('`fontSize` must be between 6 and 240')
@@ -469,7 +470,7 @@ function cleanNoteList(type: 'sticky' | 'checklist', raw: Record<string, unknown
   }
   if (raw.title !== undefined) {
     if (typeof raw.title !== 'string') fail('`title` must be a string')
-    out.title = (raw.title as string).slice(0, MAX_TITLE)
+    out.title = clipText(raw.title as string, MAX_TITLE)
   }
   if (raw.columns !== undefined) out.columns = cleanColumns(raw.columns)
   if (raw.rows !== undefined) out.rows = cleanRows(raw.rows).map(r => r.label)
