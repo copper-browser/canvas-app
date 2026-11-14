@@ -12,6 +12,7 @@
 import * as Y from 'yjs'
 import { newId } from '../doc'
 import { hostLog, postToHost } from '../../host-bridge'
+import { clipText } from '../text-diff'
 import type { Session } from '../../controller'
 import {
   CHAT_KEY,
@@ -82,7 +83,7 @@ function readMembers(v: unknown): ChatMember[] {
     seen.add(id)
     const email = typeof raw.email === 'string' ? raw.email.trim() : ''
     const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : email || 'Someone'
-    const m: ChatMember = { id, name: name.slice(0, 120), email }
+    const m: ChatMember = { id, name: clipText(name, 120), email }
     if (typeof raw.role === 'string') m.role = raw.role
     m.color = typeof raw.color === 'string' && raw.color ? raw.color : stableColor(id)
     out.push(m)
@@ -96,7 +97,7 @@ function readInvited(v: unknown): ChatInvitee[] {
     if (!isObject(raw)) return []
     const email = typeof raw.email === 'string' ? raw.email.trim() : ''
     const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : email
-    return name ? [{ name: name.slice(0, 120), email }] : []
+    return name ? [{ name: clipText(name, 120), email }] : []
   })
 }
 

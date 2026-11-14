@@ -49,6 +49,7 @@ import {
   type TextRow,
 } from './checklist-text'
 import type { CanvasStore, Origin } from './doc'
+import { clipText } from './text-diff'
 import type { ChecklistNote, ChecklistPick, ChecklistRow } from './types'
 
 export const PICK_PREFIX = 'pick:'
@@ -72,7 +73,7 @@ export const noteKey = (rowId: string) => NOTE_PREFIX + rowId
 export const noteByKey = (label: string) => NOTE_BY_PREFIX + rowKey(label)
 
 /** A comment as it is kept: `\n` line breaks, at most `MAX_NOTE` characters. */
-export const cleanNote = (text: string) => noteLines(text).slice(0, MAX_NOTE)
+export const cleanNote = (text: string) => clipText(noteLines(text), MAX_NOTE)
 
 export function newRowId(): string {
   let id = 'r'
@@ -407,7 +408,7 @@ export function setTitle(store: CanvasStore, id: string, title: string, origin: 
   store.transact(() => {
     const c = current(store, id)
     if (!c) return
-    const clean = oneLine(title).slice(0, 500)
+    const clean = clipText(oneLine(title), 500)
     if (c.kind === 'note') {
       if (c.parsed.title === clean) return
       writeTitle(c.t, c.parsed, clean)
@@ -423,7 +424,7 @@ export function setRowLabel(store: CanvasStore, id: string, rowId: string, label
   store.transact(() => {
     const c = current(store, id)
     if (!c) return
-    const clean = label.slice(0, MAX_ROW_LABEL)
+    const clean = clipText(label, MAX_ROW_LABEL)
     if (c.kind === 'note') {
       const row = noteRow(c.parsed, rowId)
       const next = oneLine(clean)
@@ -460,12 +461,12 @@ export function addRow(store: CanvasStore, id: string, after: string | null = nu
     if (c.kind === 'note') {
       const ref = after ? noteRow(c.parsed, after) : null
       if (after && !ref) return
-      const index = insertRowLine(c.t, c.parsed, ref ? ref.index : null, rowLine(label.slice(0, MAX_ROW_LABEL), null, c.columns))
+      const index = insertRowLine(c.t, c.parsed, ref ? ref.index : null, rowLine(clipText(label, MAX_ROW_LABEL), null, c.columns))
       touch(c.m)
       made = noteRowId(index)
       return
     }
-    const row = { id: newRowId(), label: label.slice(0, MAX_ROW_LABEL) }
+    const row = { id: newRowId(), label: clipText(label, MAX_ROW_LABEL) }
     const at = after ? c.rows.findIndex(r => r.id === after) + 1 : c.rows.length
     const next = [...c.rows]
     next.splice(at > 0 ? at : c.rows.length, 0, row)
@@ -544,7 +545,7 @@ export function addColumn(store: CanvasStore, id: string, label?: string, origin
   store.transact(() => {
     const c = current(store, id)
     if (!c || c.columns.length >= MAX_COLUMNS) return
-    const clean = (label ?? nextColumnLabel(c.columns)).trim().slice(0, MAX_COLUMN_LABEL)
+    const clean = clipText((label ?? nextColumnLabel(c.columns)).trim(), MAX_COLUMN_LABEL)
     if (!clean || c.columns.some(o => fold(o) === fold(clean))) return
     setColumns(c, [...c.columns, clean])
     touch(c.m)
@@ -563,7 +564,7 @@ export function renameColumn(store: CanvasStore, id: string, index: number, labe
     const c = current(store, id)
     const old = c?.columns[index]
     if (!c || old === undefined) return
-    const clean = label.trim().slice(0, MAX_COLUMN_LABEL)
+    const clean = clipText(label.trim(), MAX_COLUMN_LABEL)
     if (!clean || clean === old) return
     if (c.columns.some((o, i) => i !== index && fold(o) === fold(clean))) return
     setColumns(
@@ -604,7 +605,7 @@ export function cleanColumns(v: unknown): string[] {
   const out: string[] = []
   for (const c of v as unknown[]) {
     if (typeof c !== 'string' || !c.trim()) bad('`columns` names must be non-empty strings')
-    const name = (c as string).trim().slice(0, MAX_COLUMN_LABEL)
+    const name = clipText((c as string).trim(), MAX_COLUMN_LABEL)
     if (out.some(o => fold(o) === fold(name))) bad(`\`columns\` has ${JSON.stringify(name)} twice`)
     out.push(name)
   }
@@ -620,7 +621,7 @@ export function cleanRows(v: unknown, existing: readonly ChecklistRow[] = []): C
   if (!Array.isArray(v)) return bad('`rows` must be a list of labels or {label, id?}')
   if (v.length > MAX_ROWS) bad(`\`rows\`: at most ${MAX_ROWS} rows`)
   const given = (v as unknown[]).map(r => {
-    if (typeof r === 'string') return { label: r.trim().slice(0, MAX_ROW_LABEL), id: null as string | null }
+    if (typeof r === 'string') return { label: clipText(r.trim(), MAX_ROW_LABEL), id: null as string | null }
     const o = plain(r)
     if (!o) return bad('`rows` must be a list of labels or {label, id?}')
     const label = o.label ?? o.text ?? o.title ?? ''
@@ -630,7 +631,7 @@ export function cleanRows(v: unknown, existing: readonly ChecklistRow[] = []): C
       if (typeof o.id !== 'string' || !ROW_ID.test(o.id)) bad('`rows`: an id must be 1–32 of A–Z a–z 0–9 _ -')
       id = o.id as string
     }
-    return { label: (label as string).trim().slice(0, MAX_ROW_LABEL), id }
+    return { label: clipText((label as string).trim(), MAX_ROW_LABEL), id }
   })
   const taken = new Set<string>()
   for (const g of given) {

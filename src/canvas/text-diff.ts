@@ -41,3 +41,9 @@ export function shiftCaret(prev: string, next: string, caret: number): number {
   return insidePair(next, at) ? at - 1 : at
 }
 
+
+/** `text` cut to at most `max` UTF-16 units, never between the halves of a pair. */
+export function clipText(text: string, max: number): string {
+  if (text.length <= max) return text
+  return isHigh(text.charCodeAt(max - 1)) ? text.slice(0, max - 1) : text.slice(0, max)
+}
